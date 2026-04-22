@@ -1,6 +1,6 @@
 plugins {
     // Support writing the extension in Groovy (remove this if you don't want to)
-    groovy
+    //groovy
     // To optionally create a shadow/fat jar that bundle up any non-core dependencies
     id("com.gradleup.shadow") version "8.3.5"
     // QuPath Gradle extension convention plugin
@@ -9,11 +9,11 @@ plugins {
 
 // TODO: Configure your extension here (please change the defaults!)
 qupathExtension {
-    name = "qupath-extension-template"
+    name = "qupath-extension-cpsam"
     group = "io.github.qupath"
     version = "0.1.0-SNAPSHOT"
-    description = "A simple QuPath extension"
-    automaticModule = "io.github.qupath.extension.template"
+    description = "QuPath extension for segmentating cells using CPSAM model from Cellpose-SAM"
+    automaticModule = "io.github.ajay1685.extension.cpsam"
 }
 
 // TODO: Define your dependencies here
@@ -25,7 +25,7 @@ dependencies {
     shadow(libs.qupath.fxtras)
 
     // If you aren't using Groovy, this can be removed
-    shadow(libs.bundles.groovy)
+    //shadow(libs.bundles.groovy)
 
     // For testing
     testImplementation(libs.bundles.qupath)
