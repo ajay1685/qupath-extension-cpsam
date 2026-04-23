@@ -10,10 +10,10 @@ plugins {
 // TODO: Configure your extension here (please change the defaults!)
 qupathExtension {
     name = "qupath-extension-cpsam"
-    group = "io.github.qupath"
-    version = "0.1.0-SNAPSHOT"
+    group = "io.github.ajay1685"
+    version = "0.1.0"
     description = "QuPath extension for segmentating cells using CPSAM model from Cellpose-SAM"
-    automaticModule = "io.github.ajay1685.extension.cpsam"
+    automaticModule = "io.github.qupath.ext.cpsam"
 }
 
 // TODO: Define your dependencies here

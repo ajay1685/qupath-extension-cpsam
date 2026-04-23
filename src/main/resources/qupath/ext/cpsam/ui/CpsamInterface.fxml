@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.layout.GridPane?>
+
+<VBox xmlns="http://javafx.com/javafx/11.0.2"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="qupath.ext.cpsam.ui.CpsamInterfaceController"
+      spacing="12" prefWidth="420" prefHeight="640">
+
+    <padding>
+        <Insets top="12" right="12" bottom="12" left="12"/>
+    </padding>
+
+    <!-- Header -->
+    <Label text="CPSAM Cell Segmentation"
+           style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+
+    <Label text="The default parameters are set to match Cellpose-SAM defaults:"
+           wrapText="true"
+           maxWidth="Infinity"
+           style="-fx-text-fill: -fx-text-inner-color;"/>
+
+    <Separator />
+
+    <!-- Select a model -->
+
+    <Label text="Select a model, defaults to cpsam" style="-fx-font-weight: bold;"/>
+    <GridPane hgap="10" vgap="10">
+        <columnConstraints>
+            <!-- Labels -->
+            <ColumnConstraints minWidth="120" halignment="RIGHT"/>
+            <!-- Controls -->
+            <ColumnConstraints hgrow="ALWAYS"/>
+        </columnConstraints>
+
+        <!-- Model -->
+        <Label text="Model:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+        <ComboBox fx:id="modelChoiceBox"
+                  prefWidth="200"
+                  GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+    </GridPane>
+
+    <Separator />
+
+    <!-- Cellpose Parameters -->
+
+        <Label text="Cellpose parameters" style="-fx-font-weight: bold;"/>
+
+
+    <GridPane hgap="10" vgap="10">
+
+        <!-- Flow Threshold -->
+        <Label text="Flow threshold:"
+               GridPane.rowIndex="1" GridPane.columnIndex="0"
+               prefWidth="120"
+               style="-fx-padding: 0 0 0 14;"/>
+        <Spinner fx:id="flowThresholdSpinner"
+                 prefWidth="120"
+                 GridPane.rowIndex="1"
+                 GridPane.columnIndex="1">
+            <valueFactory>
+                <SpinnerValueFactory.DoubleSpinnerValueFactory
+                        min="0.0" max="10.0" initialValue="1.0"/>
+            </valueFactory>
+        </Spinner>
+
+        <!-- Cell probability -->
+        <Label text="Cell probability:"
+               GridPane.rowIndex="2" GridPane.columnIndex="0"
+               style="-fx-padding: 0 0 0 14;"/>
+        <Spinner fx:id="cellProbThresholdSpinner"
+                 prefWidth="120"
+                 GridPane.rowIndex="2" GridPane.columnIndex="1">
+            <valueFactory>
+                <SpinnerValueFactory.DoubleSpinnerValueFactory
+                        min="0.0" max="1.0" initialValue="0.5"/>
+            </valueFactory>
+        </Spinner>
+
+        <!-- Niter -->
+        <Label text="Iterations (niter):"
+               GridPane.rowIndex="3" GridPane.columnIndex="0"
+               style="-fx-padding: 0 0 0 14;"/>
+        <Spinner fx:id="niterSpinner"
+                 prefWidth="120"
+                 GridPane.rowIndex="3" GridPane.columnIndex="1">
+            <valueFactory>
+                <SpinnerValueFactory.IntegerSpinnerValueFactory
+                        min="10" max="5000" initialValue="200"/>
+            </valueFactory>
+        </Spinner>
+
+    </GridPane>
+
+    <Separator />
+
+    <!-- Normalization (percentile) header -->
+    <Label text="Normalization (percentile)"
+           style="-fx-font-weight: bold;"/>
+
+    <GridPane hgap="10" vgap="10">
+        <!-- Low percentile -->
+        <Label text="Low:"
+               GridPane.rowIndex="4" GridPane.columnIndex="0"
+               style="-fx-padding: 0 0 0 14;"/>
+
+        <Spinner fx:id="normLowSpinner"
+                 prefWidth="100"
+                 GridPane.rowIndex="4"
+                 GridPane.columnIndex="1">
+            <valueFactory>
+                <SpinnerValueFactory.DoubleSpinnerValueFactory
+                        min="0.0"
+                        max="100.0"
+                        initialValue="1.0"/>
+            </valueFactory>
+        </Spinner>
+
+        <!-- High percentile -->
+        <Label text="High:"
+               GridPane.rowIndex="5"
+               GridPane.columnIndex="0"
+               prefWidth="120"
+               style="-fx-padding: 0 0 0 14;"/>
+
+        <Spinner fx:id="normHighSpinner"
+                 prefWidth="100"
+                 GridPane.rowIndex="5"
+                 GridPane.columnIndex="1">
+            <valueFactory>
+                <SpinnerValueFactory.DoubleSpinnerValueFactory
+                        min="0.0"
+                        max="100.0"
+                        initialValue="99.0"/>
+            </valueFactory>
+        </Spinner>
+
+    </GridPane>
+
+    <Separator />
+
+    <!-- Cellpose Parameters -->
+    <HBox>
+        <Label text="QuPath and DJL parameters" style="-fx-font-weight: bold;"/>
+    </HBox>
+
+    <GridPane hgap="10" vgap="10">
+
+        <!-- Tile size -->
+        <Label text="Tile size:"
+               GridPane.rowIndex="7" GridPane.columnIndex="0"
+               prefWidth="120"
+               style="-fx-padding: 0 0 0 14;"/>
+        <Spinner fx:id="tileSizeSpinner"
+                 prefWidth="120"
+                 GridPane.rowIndex="7" GridPane.columnIndex="1">
+            <valueFactory>
+                <SpinnerValueFactory.IntegerSpinnerValueFactory
+                        min="32" max="4096" initialValue="256" amountToStepBy="16"/>
+            </valueFactory>
+        </Spinner>
+
+        <!-- Batch size -->
+        <Label text="Batch size:"
+               GridPane.rowIndex="8" GridPane.columnIndex="0"
+               style="-fx-padding: 0 0 0 14;"/>
+        <Spinner fx:id="batchSizeSpinner"
+                 prefWidth="120"
+                 GridPane.rowIndex="8" GridPane.columnIndex="1">
+            <valueFactory>
+                <SpinnerValueFactory.IntegerSpinnerValueFactory
+                        min="1" max="128" initialValue="8"/>
+            </valueFactory>
+        </Spinner>
+
+        <!-- Device -->
+        <Label text="Device:"
+               GridPane.rowIndex="9" GridPane.columnIndex="0"
+               style="-fx-padding: 0 0 0 14;"/>
+        <ComboBox fx:id="deviceChoiceBox"
+                  prefWidth="160"
+                  GridPane.rowIndex="9" GridPane.columnIndex="1"/>
+    </GridPane>
+
+    <Separator />
+
+    <!-- Actions -->
+    <HBox spacing="10" alignment="CENTER">
+        <Button fx:id="runButton"
+                text="Run segmentation"
+                prefWidth="160"
+                defaultButton="true"/>
+    </HBox>
+
+    <!-- Status -->
+    <Label fx:id="statusLabel"
+           style="-fx-text-fill: -fx-accent;"/>
+</VBox>
