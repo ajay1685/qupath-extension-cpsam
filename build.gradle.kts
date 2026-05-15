@@ -12,7 +12,7 @@ qupathExtension {
     name = "qupath-extension-cpsam"
     group = "io.github.ajay1685"
     version = "0.1.0"
-    description = "QuPath extension for segmentating cells using CPSAM model from Cellpose-SAM"
+    description = "QuPath extension for segmentating cells with CPSAM model from Cellpose-SAM"
     automaticModule = "io.github.qupath.ext.cpsam"
 }
 
@@ -26,6 +26,8 @@ dependencies {
 
     // If you aren't using Groovy, this can be removed
     //shadow(libs.bundles.groovy)
+    implementation(libs.deepJavaLibrary)
+    implementation("io.github.qupath:qupath-extension-djl:0.4.3")
 
     // For testing
     testImplementation(libs.bundles.qupath)

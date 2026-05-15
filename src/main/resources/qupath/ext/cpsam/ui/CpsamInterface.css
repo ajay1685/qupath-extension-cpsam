@@ -1,0 +1,7 @@
+.label {
+    -fx-font-size: 12px;
+}
+
+.separator {
+    -fx-padding: 5 0 5 0;
+}
