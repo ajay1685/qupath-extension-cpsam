@@ -71,6 +71,7 @@ public class CpSamTask extends Task<Void> {
                     .flowThreshold(flowThreshold)
                     .niter(niter)
                     .batchSize(batchSize)
+                    .numPredictors(nThreads)
                     .tileDims(tileSize)
                     .interTilePadding(tilePadding)
                     .taskRunner(taskRunner)
@@ -96,6 +97,7 @@ public class CpSamTask extends Task<Void> {
                                     .flowThreshold(%.2f)
                                     .niter(%d)
                                     .batchSize(%d)
+                                    .numPredictors(%d)
                                     .tileDims(%d)
                                     .interTilePadding(%d)
                                     .outputDetections()
@@ -104,7 +106,7 @@ public class CpSamTask extends Task<Void> {
                                 """.formatted(
                                 modelPathStr.replace("\\", "/"),
                                 device, diameter, cellprobThreshold, flowThreshold,
-                                niter, batchSize, tileSize, tilePadding
+                                niter, batchSize, nThreads, tileSize, tilePadding
                         ).strip()
                 )));
 

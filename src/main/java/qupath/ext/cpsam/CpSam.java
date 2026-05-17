@@ -34,7 +34,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
@@ -54,6 +53,7 @@ public class CpSam {
     private final float flowThreshold;
     private final int niter;
     private final int batchSize;
+    private final int numPredictors;
     private final String device;
     private final Class<? extends PathObject> preferredOutputType;
     private final TaskRunner taskRunner;
@@ -68,6 +68,7 @@ public class CpSam {
         this.flowThreshold = builder.flowThreshold;
         this.niter = builder.niter;
         this.batchSize = builder.batchSize;
+        this.numPredictors = builder.numPredictors;
         this.device = builder.device;
         this.preferredOutputType = builder.preferredOutputType;
         this.taskRunner = builder.taskRunner;
@@ -144,6 +145,8 @@ public class CpSam {
         NDManager ndManager = NDManager.newBaseManager(Device.fromName(this.device));
 
         try (ndManager) {
+            var inputChannels = getInputChannels(imageData);
+
             // Create the model loading criteria
             var criteria = Criteria.builder()
                     .setTypes(NDList.class, NDList.class)
@@ -153,9 +156,8 @@ public class CpSam {
                     .build();
 
             try (var loadedModel = criteria.loadModel()) {
-                int nPredictors = 1;
-                BlockingQueue<Predictor<NDList, NDList>> predictors = new ArrayBlockingQueue<>(nPredictors);
-                for (int i = 0; i < nPredictors; i++) {
+                BlockingQueue<Predictor<NDList, NDList>> predictors = new ArrayBlockingQueue<>(numPredictors);
+                for (int i = 0; i < numPredictors; i++) {
                     predictors.add(loadedModel.newPredictor());
                 }
 
@@ -173,7 +175,7 @@ public class CpSam {
 
                 // Create processor
                 Processor<Mat, Mat, NDArray[]> processor = new CpSamTileProcessor(
-                        predictors, tileDims, ndManager,
+                        predictors, inputChannels, ndManager,
                         diameter, (float) cellprobThreshold, (float) flowThreshold, niter, batchSize);
 
                 // Create output handler
@@ -191,7 +193,7 @@ public class CpSam {
                 // Create image supplier using ImageOps (same as InstanSeg)
                 // Extracts channels from the image data
                 var imageSupplier = (qupath.lib.experimental.pixels.ImageSupplier<Mat>) params ->
-                        ImageOps.buildImageDataOp(java.util.Collections.emptyList())
+                        ImageOps.buildImageDataOp(inputChannels)
                                 .apply(params.getImageData(), params.getRegionRequest());
 
                 // Build and run PixelProcessor
@@ -228,6 +230,14 @@ public class CpSam {
         }
     }
 
+    private List<ColorTransforms.ColorTransform> getInputChannels(ImageData<BufferedImage> imageData) {
+        List<ColorTransforms.ColorTransform> channels = new ArrayList<>();
+        for (int i = 0; i < imageData.getServer().nChannels(); i++) {
+            channels.add(ColorTransforms.createChannelExtractor(i));
+        }
+        return channels;
+    }
+
     /**
      * Create a builder for CpSam.
      */
@@ -251,6 +261,7 @@ public class CpSam {
         private float flowThreshold = 0.4f;
         private int niter = 200;
         private int batchSize = 1;
+        private int numPredictors = Integer.getInteger("cpsam.numPredictors", 1);
         private String device = "cpu";
         private Class<? extends PathObject> preferredOutputType = PathDetectionObject.class;
         private TaskRunner taskRunner = TaskRunnerUtils.getDefaultInstance().createTaskRunner();
@@ -311,6 +322,11 @@ public class CpSam {
             return this;
         }
 
+        public Builder numPredictors(int numPredictors) {
+            this.numPredictors = Math.max(1, numPredictors);
+            return this;
+        }
+
         public Builder device(String device) {
             this.device = device;
             return this;
@@ -359,6 +375,7 @@ public class CpSam {
 
         public Builder nThreads(int nThreads) {
             this.taskRunner = TaskRunnerUtils.getDefaultInstance().createTaskRunner(nThreads);
+            this.numPredictors = Math.max(1, nThreads);
             return this;
         }
 
