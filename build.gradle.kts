@@ -11,7 +11,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-cpsam"
     group = "io.github.ajay1685"
-    version = "0.1.0"
+    version = "0.2.0"
     description = "QuPath extension for segmentating cells with CPSAM model from Cellpose-SAM"
     automaticModule = "io.github.qupath.ext.cpsam"
 }
