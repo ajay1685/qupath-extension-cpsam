@@ -144,8 +144,9 @@ public class CpSamInterfaceController extends VBox {
         niterSpinner.setValueFactory(niterFactory);
 
         // Batch size
-        SpinnerValueFactory.IntegerSpinnerValueFactory batchFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 128, 1);
+        SpinnerValueFactory.IntegerSpinnerValueFactory batchFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 128, CpSamPreferences.batchSizeProperty().get());
         batchSizeSpinner.setValueFactory(batchFactory);
+        batchFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.batchSizeProperty().set(n));
 
         // Threads
         SpinnerValueFactory.IntegerSpinnerValueFactory threadFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 512,
@@ -160,7 +161,7 @@ public class CpSamInterfaceController extends VBox {
         tileSizeChoiceBox.valueProperty().addListener((v, o, n) -> CpSamPreferences.tileSizeProperty().set(n));
 
         // Tile padding
-        tilePaddingChoiceBox.getItems().addAll(16, 32, 48, 64, 80, 96);
+        tilePaddingChoiceBox.getItems().addAll(0, 16, 32, 48, 64, 80, 96);
         tilePaddingChoiceBox.setValue(CpSamPreferences.tilePaddingProperty().getValue());
         tilePaddingChoiceBox.valueProperty().addListener((v, o, n) -> CpSamPreferences.tilePaddingProperty().set(n));
 
@@ -168,7 +169,10 @@ public class CpSamInterfaceController extends VBox {
         comboOutputType.getItems().addAll("Detections", "Annotations", "Cells");
         comboOutputType.getSelectionModel().select(0);
 
-        // Devices (populated by initPyTorchCheck)
+        // Save device selection whenever it changes (population done in updateDeviceChoices)
+        deviceChoices.valueProperty().addListener((v, o, n) -> {
+            if (n != null) CpSamPreferences.preferredDeviceProperty().set(n);
+        });
     }
 
     private void initBindings() {

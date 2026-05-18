@@ -3,6 +3,7 @@ package qupath.ext.cpsam;
 import ai.djl.Device;
 import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
+import ai.djl.repository.zoo.ZooModel;
 import ai.djl.training.util.ProgressBar;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
@@ -34,7 +35,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
@@ -46,6 +46,77 @@ public class CpSam {
 
     private static final Logger logger = LoggerFactory.getLogger(CpSam.class);
 
+    // Cached model + predictor pool: reused across runs when path/device/numPredictors are unchanged.
+    // This eliminates both the ~900ms model-reload cost and CUDA kernel JIT warmup on every run.
+    private static ZooModel<NDList, NDList> cachedModel = null;
+    private static BlockingQueue<Predictor<NDList, NDList>> cachedPredictors = null;
+    private static String cachedModelPath = null;
+    private static String cachedDevice = null;
+    private static int cachedNumPredictors = 0;
+
+    /**
+     * Returns the cached predictor queue, reloading the model and/or recreating predictors only
+     * when the model path, device, or requested predictor count has changed.
+     */
+    private static synchronized BlockingQueue<Predictor<NDList, NDList>> getOrLoadPredictors(
+            Path modelPath, String device, int numPredictors) throws Exception {
+        String pathStr = modelPath.toString();
+        boolean modelSame = pathStr.equals(cachedModelPath) && device.equals(cachedDevice);
+        if (modelSame && numPredictors == cachedNumPredictors && cachedPredictors != null) {
+            logger.debug("CPSAM reusing {} cached predictor(s) for path={}, device={}", numPredictors, pathStr, device);
+            return cachedPredictors;
+        }
+        // Close old predictors before recreating or closing the model
+        closeCachedPredictors();
+        if (!modelSame && cachedModel != null) {
+            logger.debug("CPSAM model path or device changed — closing cached model");
+            try { cachedModel.close(); } catch (Exception ex) { logger.warn("Error closing cached model", ex); }
+            cachedModel = null;
+        }
+        if (cachedModel == null) {
+            logger.info("CPSAM loading model: path={}, device={}", pathStr, device);
+            var criteria = Criteria.builder()
+                    .setTypes(NDList.class, NDList.class)
+                    .optModelUrls(modelPath.toUri().toString())
+                    .optProgress(new ProgressBar())
+                    .optDevice(Device.fromName(device))
+                    .build();
+            cachedModel = criteria.loadModel();
+            cachedModelPath = pathStr;
+            cachedDevice = device;
+        }
+        logger.info("CPSAM creating {} predictor(s) for device={}", numPredictors, device);
+        cachedPredictors = new ArrayBlockingQueue<>(numPredictors);
+        for (int i = 0; i < numPredictors; i++) {
+            cachedPredictors.add(cachedModel.newPredictor());
+        }
+        cachedNumPredictors = numPredictors;
+        return cachedPredictors;
+    }
+
+    private static void closeCachedPredictors() {
+        if (cachedPredictors != null) {
+            List<Predictor<NDList, NDList>> toClose = new ArrayList<>();
+            cachedPredictors.drainTo(toClose);
+            for (var p : toClose) {
+                try { p.close(); } catch (Exception ex) { logger.warn("Error closing predictor", ex); }
+            }
+            cachedPredictors = null;
+            cachedNumPredictors = 0;
+        }
+    }
+
+    /** Close the cached model and predictors, e.g. when the panel is closed. */
+    public static synchronized void clearModelCache() {
+        closeCachedPredictors();
+        if (cachedModel != null) {
+            try { cachedModel.close(); } catch (Exception ex) { logger.warn("Error closing model cache", ex); }
+            cachedModel = null;
+            cachedModelPath = null;
+            cachedDevice = null;
+        }
+    }
+
     private final int tileDims;
     private final double downsample;
     private final int padding;
@@ -54,6 +125,7 @@ public class CpSam {
     private final float flowThreshold;
     private final int niter;
     private final int batchSize;
+    private final int numPredictors;
     private final String device;
     private final Class<? extends PathObject> preferredOutputType;
     private final TaskRunner taskRunner;
@@ -68,6 +140,7 @@ public class CpSam {
         this.flowThreshold = builder.flowThreshold;
         this.niter = builder.niter;
         this.batchSize = builder.batchSize;
+        this.numPredictors = builder.numPredictors;
         this.device = builder.device;
         this.preferredOutputType = builder.preferredOutputType;
         this.taskRunner = builder.taskRunner;
@@ -144,21 +217,14 @@ public class CpSam {
         NDManager ndManager = NDManager.newBaseManager(Device.fromName(this.device));
 
         try (ndManager) {
-            // Create the model loading criteria
-            var criteria = Criteria.builder()
-                    .setTypes(NDList.class, NDList.class)
-                    .optModelUrls(modelPath.toUri().toString())
-                    .optProgress(new ProgressBar())
-                    .optDevice(Device.fromName(this.device))
-                    .build();
+            var inputChannels = getInputChannels(imageData);
 
-            try (var loadedModel = criteria.loadModel()) {
-                int nPredictors = 1;
-                BlockingQueue<Predictor<NDList, NDList>> predictors = new ArrayBlockingQueue<>(nPredictors);
-                for (int i = 0; i < nPredictors; i++) {
-                    predictors.add(loadedModel.newPredictor());
-                }
+            // Get (or load) the cached predictor pool — model + predictors survive across runs
+            BlockingQueue<Predictor<NDList, NDList>> predictors =
+                    getOrLoadPredictors(modelPath, this.device, numPredictors);
 
+            {   // inner scope — no predictor closing here; pool is reused next run
+                try {
                 // Create tiler
                 int sizeWithoutPadding = (int) Math.round(effectiveDownsample * (tileDims - (double) padding * 2));
                 Tiler tiler = Tiler.builder(Math.max(256, sizeWithoutPadding))
@@ -173,7 +239,7 @@ public class CpSam {
 
                 // Create processor
                 Processor<Mat, Mat, NDArray[]> processor = new CpSamTileProcessor(
-                        predictors, tileDims, ndManager,
+                        predictors, inputChannels, ndManager,
                         diameter, (float) cellprobThreshold, (float) flowThreshold, niter, batchSize);
 
                 // Create output handler
@@ -191,7 +257,7 @@ public class CpSam {
                 // Create image supplier using ImageOps (same as InstanSeg)
                 // Extracts channels from the image data
                 var imageSupplier = (qupath.lib.experimental.pixels.ImageSupplier<Mat>) params ->
-                        ImageOps.buildImageDataOp(java.util.Collections.emptyList())
+                        ImageOps.buildImageDataOp(inputChannels)
                                 .apply(params.getImageData(), params.getRegionRequest());
 
                 // Build and run PixelProcessor
@@ -213,19 +279,34 @@ public class CpSam {
                 long nPixels = ((CpSamTileProcessor) processor).getPixelsProcessedCount();
                 boolean interrupted = ((CpSamTileProcessor) processor).wasInterrupted();
 
+                long totalElapsedMs = System.currentTimeMillis() - startTime;
                 if (verboseLogging) {
-                    logger.info("CPSAM run finished: tilesProcessed={}, tilesFailed={}, pixelsProcessed={}, outputObjects={}, interrupted={}, elapsedMs={}",
-                            nTiles, nFailed, nPixels, nObjects, interrupted, System.currentTimeMillis() - startTime);
+                    logger.info("CPSAM run finished: tilesProcessed={}, tilesFailed={}, pixelsProcessed={}, outputObjects={}, interrupted={}, elapsedMs={} ({} s)",
+                            nTiles, nFailed, nPixels, nObjects, interrupted, totalElapsedMs, String.format("%.2f", totalElapsedMs / 1000.0));
                 }
 
                 return new CpSamResults(nPixels, nTiles, nFailed, nObjects,
-                        System.currentTimeMillis() - startTime, interrupted);
-            }
+                        totalElapsedMs, interrupted);
+                } catch (Exception ex) {
+                    // If inference failed, evict the predictor cache — CUDA state may be corrupt
+                    logger.warn("CPSAM run failed; evicting predictor cache to force fresh state on next run", ex);
+                    clearModelCache();
+                    throw ex;
+                }
+            }   // end inner scope — predictors remain cached for next run
         } catch (Exception e) {
             logger.error("Error running CPSAM detection", e);
             return new CpSamResults(0, 0, 0, 0,
                     System.currentTimeMillis() - startTime, e instanceof InterruptedException);
         }
+    }
+
+    private List<ColorTransforms.ColorTransform> getInputChannels(ImageData<BufferedImage> imageData) {
+        List<ColorTransforms.ColorTransform> channels = new ArrayList<>();
+        for (int i = 0; i < imageData.getServer().nChannels(); i++) {
+            channels.add(ColorTransforms.createChannelExtractor(i));
+        }
+        return channels;
     }
 
     /**
@@ -251,6 +332,7 @@ public class CpSam {
         private float flowThreshold = 0.4f;
         private int niter = 200;
         private int batchSize = 1;
+        private int numPredictors = Integer.getInteger("cpsam.numPredictors", 1);
         private String device = "cpu";
         private Class<? extends PathObject> preferredOutputType = PathDetectionObject.class;
         private TaskRunner taskRunner = TaskRunnerUtils.getDefaultInstance().createTaskRunner();
@@ -311,6 +393,11 @@ public class CpSam {
             return this;
         }
 
+        public Builder numPredictors(int numPredictors) {
+            this.numPredictors = Math.max(1, numPredictors);
+            return this;
+        }
+
         public Builder device(String device) {
             this.device = device;
             return this;
@@ -359,6 +446,7 @@ public class CpSam {
 
         public Builder nThreads(int nThreads) {
             this.taskRunner = TaskRunnerUtils.getDefaultInstance().createTaskRunner(nThreads);
+            this.numPredictors = Math.max(1, nThreads);
             return this;
         }
 
