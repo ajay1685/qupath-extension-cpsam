@@ -12,7 +12,11 @@ import qupath.lib.plugins.workflow.DefaultScriptableWorkflowStep;
 
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.ResourceBundle;
+import java.util.stream.Collectors;
+import qupath.lib.images.servers.ColorTransforms;
 
 public class CpSamTask extends Task<Void> {
 
@@ -30,11 +34,12 @@ public class CpSamTask extends Task<Void> {
     private final int tileSize;
     private final int tilePadding;
     private final Class<? extends PathObject> preferredOutputType;
+    private final List<String> channelNames;
 
     public CpSamTask(ImageData<BufferedImage> imageData, String modelPathStr,
               String device, double diameter, float cellprobThreshold, float flowThreshold,
               int niter, int batchSize, int tileSize, int tilePadding,
-              Class<? extends PathObject> preferredOutputType) {
+              Class<? extends PathObject> preferredOutputType, List<String> channelNames) {
         this.imageData = imageData;
         this.modelPathStr = modelPathStr;
         this.device = device;
@@ -46,6 +51,22 @@ public class CpSamTask extends Task<Void> {
         this.tileSize = tileSize;
         this.tilePadding = tilePadding;
         this.preferredOutputType = preferredOutputType;
+        this.channelNames = List.copyOf(channelNames);
+    }
+
+    private List<ColorTransforms.ColorTransform> buildChannelTransforms() {
+        if (channelNames.isEmpty()) return List.of();
+        var allNames = imageData.getServer().getMetadata().getChannels().stream()
+                .map(ch -> ch.getName())
+                .toList();
+        var transforms = new ArrayList<ColorTransforms.ColorTransform>();
+        for (String name : channelNames) {
+            int idx = allNames.indexOf(name);
+            if (idx >= 0) {
+                transforms.add(ColorTransforms.createChannelExtractor(idx));
+            }
+        }
+        return transforms;
     }
 
     @Override
@@ -74,6 +95,7 @@ public class CpSamTask extends Task<Void> {
                     .numPredictors(nThreads)
                     .tileDims(tileSize)
                     .interTilePadding(tilePadding)
+                    .inputChannels(buildChannelTransforms())
                     .taskRunner(taskRunner)
                     .preferredOutputType(preferredOutputType)
                     .build()
@@ -85,6 +107,16 @@ public class CpSamTask extends Task<Void> {
         }
 
         imageData.getHierarchy().fireHierarchyChangedEvent(this);
+        String channelLine;
+        if (channelNames.isEmpty()) {
+            channelLine = "";
+        } else {
+            channelLine = "\n    .inputChannels(java.util.List.of(" +
+                    channelNames.stream()
+                            .map(n -> "qupath.lib.images.servers.ColorTransforms.createChannelExtractor(" + (char) 34 + n + (char) 34 + ")")
+                            .collect(Collectors.joining(", ")) +
+                    "))";
+        }
         imageData.getHistoryWorkflow()
                 .addStep(new DefaultScriptableWorkflowStep(
                         "Run CPSAM segmentation",
@@ -99,14 +131,15 @@ public class CpSamTask extends Task<Void> {
                                     .batchSize(%d)
                                     .numPredictors(%d)
                                     .tileDims(%d)
-                                    .interTilePadding(%d)
+                                    .interTilePadding(%d)%s
                                     .outputDetections()
                                     .build()
                                     .detectObjects()
                                 """.formatted(
                                 modelPathStr.replace("\\", "/"),
                                 device, diameter, cellprobThreshold, flowThreshold,
-                                niter, batchSize, nThreads, tileSize, tilePadding
+                                niter, batchSize, nThreads, tileSize, tilePadding,
+                                channelLine
                         ).strip()
                 )));
 

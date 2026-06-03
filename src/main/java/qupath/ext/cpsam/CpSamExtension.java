@@ -19,6 +19,8 @@ import qupath.lib.gui.extensions.QuPathExtension;
 import qupath.lib.gui.prefs.PathPrefs;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ResourceBundle;
 
 
@@ -76,10 +78,28 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 
 	private void addMenuItem(QuPathGUI qupath) {
 		var menu = qupath.getMenu("Extensions>" + EXTENSION_NAME, true);
+
+		// Main UI panel
 		MenuItem menuItem = new MenuItem("Run CPSAM Segmentation");
 		menuItem.setOnAction(e -> createStage(qupath));
 		menuItem.disableProperty().bind(enableExtensionProperty.not());
 		menu.getItems().add(menuItem);
+
+		// Script template
+		try (InputStream stream = CpSamExtension.class.getClassLoader()
+				.getResourceAsStream("scripts/CpSam_detection_template.groovy")) {
+			if (stream != null) {
+				String script = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+				MenuItem scriptItem = new MenuItem("CpSam detection script template");
+				scriptItem.setOnAction(e -> openScript(qupath, "CpSam detection", script));
+				scriptItem.disableProperty().bind(enableExtensionProperty.not());
+				menu.getItems().add(scriptItem);
+			} else {
+				logger.warn("CpSam: could not find detection script template resource");
+			}
+		} catch (IOException e) {
+			logger.error("CpSam: failed to load detection script template", e);
+		}
 	}
 
 	private void createStage(QuPathGUI qupath) {
@@ -105,6 +125,15 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 			FXUtils.retainWindowPosition(stage);
 	}
 
+
+	private static void openScript(QuPathGUI qupath, String name, String script) {
+		var editor = qupath.getScriptEditor();
+		if (editor == null) {
+			logger.error("No script editor is available");
+			return;
+		}
+		editor.showScript(name, script);
+	}
 
 	@Override
 	public String getName() {

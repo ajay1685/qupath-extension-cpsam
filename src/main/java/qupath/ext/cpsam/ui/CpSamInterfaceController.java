@@ -85,6 +85,14 @@ public class CpSamInterfaceController extends VBox {
     private Button runButton;
     @FXML
     private Label labelMessage;
+    @FXML
+    private ComboBox<String> channelCombo1;
+    @FXML
+    private ComboBox<String> channelCombo2;
+    @FXML
+    private ComboBox<String> channelCombo3;
+
+    private static final String CHANNEL_NONE = "(None)";
 
     private final ExecutorService pool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam", true));
     private final QuPathGUI qupath;
@@ -123,6 +131,9 @@ public class CpSamInterfaceController extends VBox {
         initPyTorchCheck();
         updateModelPathLabel();
         updateDeviceChoices();
+        // Populate channel combos from the current image; repopulate when image changes
+        qupath.imageDataProperty().addListener(this::handleImageDataChange);
+        handleImageDataChange(qupath.imageDataProperty(), null, qupath.imageDataProperty().get());
     }
 
     private void initSpinners() {
@@ -148,10 +159,12 @@ public class CpSamInterfaceController extends VBox {
         batchSizeSpinner.setValueFactory(batchFactory);
         batchFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.batchSizeProperty().set(n));
 
-        // Threads
-        SpinnerValueFactory.IntegerSpinnerValueFactory threadFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 512,
-            Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
+        // Threads — load persisted preference, cap at 8 (more concurrent GPU inferences than that
+        // always causes VRAM exhaustion and massive slowdown; CPU users can set via script if needed)
+        SpinnerValueFactory.IntegerSpinnerValueFactory threadFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 8,
+            CpSamPreferences.numThreadsProperty().get());
         threadSpinner.setValueFactory(threadFactory);
+        threadFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.numThreadsProperty().set(n));
     }
 
     private void initChoiceBoxes() {
@@ -264,6 +277,79 @@ public class CpSamInterfaceController extends VBox {
         }
     }
 
+    private void handleImageDataChange(ObservableValue<? extends ImageData<BufferedImage>> obs,
+                                       ImageData<BufferedImage> oldValue,
+                                       ImageData<BufferedImage> newValue) {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(() -> handleImageDataChange(obs, oldValue, newValue));
+            return;
+        }
+        updateChannelCombos(newValue);
+    }
+
+    private void updateChannelCombos(ImageData<BufferedImage> imageData) {
+        // Save current selections before clearing
+        String prev1 = channelCombo1.getValue();
+        String prev2 = channelCombo2.getValue();
+        String prev3 = channelCombo3.getValue();
+
+        channelCombo1.getItems().clear();
+        channelCombo2.getItems().clear();
+        channelCombo3.getItems().clear();
+
+        if (imageData == null) {
+            channelCombo1.setDisable(true);
+            channelCombo2.setDisable(true);
+            channelCombo3.setDisable(true);
+            return;
+        }
+
+        List<String> names = new ArrayList<>();
+        for (var ch : imageData.getServer().getMetadata().getChannels()) {
+            names.add(ch.getName());
+        }
+
+        if (names.isEmpty()) {
+            channelCombo1.setDisable(true);
+            channelCombo2.setDisable(true);
+            channelCombo3.setDisable(true);
+            return;
+        }
+
+        channelCombo1.setDisable(false);
+        channelCombo2.setDisable(false);
+        channelCombo3.setDisable(false);
+
+        // Channel 1: required — no None option
+        channelCombo1.getItems().addAll(names);
+        // Channels 2 & 3: optional — (None) means zero-pad that slot
+        channelCombo2.getItems().add(CHANNEL_NONE);
+        channelCombo2.getItems().addAll(names);
+        channelCombo3.getItems().add(CHANNEL_NONE);
+        channelCombo3.getItems().addAll(names);
+
+        // Restore previous selection if still valid, else use a sensible default
+        channelCombo1.setValue(names.contains(prev1) ? prev1 : names.get(0));
+        channelCombo2.setValue(CHANNEL_NONE.equals(prev2) || names.contains(prev2)
+                ? prev2 : (names.size() >= 2 ? names.get(1) : CHANNEL_NONE));
+        channelCombo3.setValue(CHANNEL_NONE.equals(prev3) || names.contains(prev3)
+                ? prev3 : (names.size() >= 3 ? names.get(2) : CHANNEL_NONE));
+    }
+
+    /**
+     * Returns the ordered list of non-(None) channel names from the three channel combos.
+     * Trailing (None) selections stop collection; enforceThreeChannels() will zero-pad those slots.
+     */
+    private List<String> getSelectedChannelNames() {
+        List<String> result = new ArrayList<>(3);
+        for (var combo : List.of(channelCombo1, channelCombo2, channelCombo3)) {
+            String val = combo.getValue();
+            if (val == null || CHANNEL_NONE.equals(val)) break;
+            result.add(val);
+        }
+        return result;
+    }
+
     @FXML
     void promptForModelDirectory() {
         Path currentPath = modelPathBinding.get();
@@ -349,6 +435,7 @@ public class CpSamInterfaceController extends VBox {
         };
 
         // Create and schedule task
+        List<String> channelNames = getSelectedChannelNames();
         var task = new CpSamTask(
                 imageData,
                 modelPath.toString(),
@@ -360,7 +447,8 @@ public class CpSamInterfaceController extends VBox {
                 batchSize,
                 tileSize,
                 tilePadding,
-                outputClass
+                outputClass,
+                channelNames
         );
 
         // Attach state listener

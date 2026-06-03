@@ -114,6 +114,42 @@
 
                         <Separator prefWidth="200.0" />
 
+                        <!-- Input Channels -->
+                        <Label styleClass="regular" text="Input Channels" />
+                        <VBox styleClass="standard-spacing">
+                            <children>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Channel 1">
+                                        <tooltip><Tooltip text="Channel sent to model slot 1 (required)" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <ComboBox fx:id="channelCombo1" prefWidth="130.0">
+                                        <tooltip><Tooltip text="First model input channel" /></tooltip>
+                                    </ComboBox>
+                                </HBox>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Channel 2">
+                                        <tooltip><Tooltip text="Channel slot 2; (None) = zero-pad" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <ComboBox fx:id="channelCombo2" prefWidth="130.0">
+                                        <tooltip><Tooltip text="Second model input channel; (None) pads with zeros" /></tooltip>
+                                    </ComboBox>
+                                </HBox>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Channel 3">
+                                        <tooltip><Tooltip text="Channel slot 3; (None) = zero-pad" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <ComboBox fx:id="channelCombo3" prefWidth="130.0">
+                                        <tooltip><Tooltip text="Third model input channel; (None) pads with zeros" /></tooltip>
+                                    </ComboBox>
+                                </HBox>
+                            </children>
+                        </VBox>
+
+                        <Separator prefWidth="200.0" />
+
                         <!-- Processing -->
                         <Label styleClass="regular" text="Processing" />
                         <VBox styleClass="standard-spacing">

@@ -83,34 +83,34 @@ public class CpSamTranslator implements Translator<NDArray, NDArray[]> {
      * Convert model output (mask tensor) back to NDArray[].
      */
     @Override
-        public NDArray[] processOutput(TranslatorContext ctx, NDList output) {
-            boolean verboseLogging = CpSamPreferences.verboseLoggingProperty().get();
-            if (output == null || output.isEmpty()) {
-                throw new IllegalStateException("CPSAM model returned no outputs");
-            }
+    public NDArray[] processOutput(TranslatorContext ctx, NDList output) {
+        boolean verboseLogging = CpSamPreferences.verboseLoggingProperty().get();
+        if (output == null || output.isEmpty()) {
+            throw new IllegalStateException("CPSAM model returned no outputs");
+        }
 
-            NDArray mask = output.get(0);
+        NDArray mask = output.get(0);
 
-            if (verboseLogging) {
-                logger.info("Translator raw output[0]: shape={}, dtype={}", mask.getShape(), mask.getDataType());
-            }
+        if (verboseLogging) {
+            logger.info("Translator raw output[0]: shape={}, dtype={}", mask.getShape(), mask.getDataType());
+        }
 
-            if (mask.getShape().dimension() != 3) {
-                throw new IllegalStateException("CPSAM model output must have shape [B, H, W], got " + mask.getShape());
-            }
+        if (mask.getShape().dimension() != 3) {
+            throw new IllegalStateException("CPSAM model output must have shape [B, H, W], got " + mask.getShape());
+        }
 
-            long batchSize = mask.getShape().get(0);
-            if (batchSize != 1) {
-                throw new IllegalStateException("CPSAM tile inference expects batch size 1, got " + batchSize);
-            }
+        long batchSize = mask.getShape().get(0);
+        if (batchSize != 1) {
+            throw new IllegalStateException("CPSAM tile inference expects batch size 1, got " + batchSize);
+        }
 
-            // Normalize model output to a 2D mask for downstream contour extraction.
-            mask = mask.squeeze(0).toType(DataType.FLOAT32, true);
+        // Normalize model output to a 2D mask for downstream contour extraction.
+        mask = mask.squeeze(0).toType(DataType.FLOAT32, true);
 
-            if (verboseLogging) {
-                logger.info("Translator normalized mask output: shape={}, dtype={}, min={}, max={}",
-                        mask.getShape(), mask.getDataType(), mask.min().getFloat(), mask.max().getFloat());
-            }
+        if (verboseLogging) {
+            logger.info("Translator normalized mask output: shape={}, dtype={}, min={}, max={}",
+                    mask.getShape(), mask.getDataType(), mask.min().getFloat(), mask.max().getFloat());
+        }
         return new NDArray[]{mask};
     }
 }

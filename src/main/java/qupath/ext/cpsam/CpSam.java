@@ -127,9 +127,14 @@ public class CpSam {
     private final int batchSize;
     private final int numPredictors;
     private final String device;
+    private final List<ColorTransforms.ColorTransform> channels;
     private final Class<? extends PathObject> preferredOutputType;
     private final TaskRunner taskRunner;
     private final CpSamModel model;
+    private final double normalizationDownsample;
+    private final int normalizationMaxDimension;
+    private final double normalizationLowPercentile;
+    private final double normalizationHighPercentile;
 
     private CpSam(Builder builder) {
         this.tileDims = builder.tileDims;
@@ -142,9 +147,14 @@ public class CpSam {
         this.batchSize = builder.batchSize;
         this.numPredictors = builder.numPredictors;
         this.device = builder.device;
+        this.channels = builder.channels;
         this.preferredOutputType = builder.preferredOutputType;
         this.taskRunner = builder.taskRunner;
         this.model = builder.model;
+        this.normalizationDownsample = builder.normalizationDownsample;
+        this.normalizationMaxDimension = builder.normalizationMaxDimension;
+        this.normalizationLowPercentile = builder.normalizationLowPercentile;
+        this.normalizationHighPercentile = builder.normalizationHighPercentile;
     }
 
     /**
@@ -194,8 +204,8 @@ public class CpSam {
         Path modelPath = model.getModelPath();
 
         if (verboseLogging) {
-            logger.info("CPSAM run starting: modelPath={}, device={}, tileDims={}, padding={}, diameter={}, cellprobThreshold={}, flowThreshold={}, niter={}, batchSize={}, selectedObjects={}",
-                modelPath, device, tileDims, padding, diameter, cellprobThreshold, flowThreshold, niter, batchSize, pathObjects.size());
+            logger.info("CPSAM run starting: modelPath={}, device={}, numPredictors={}, tileDims={}, padding={}, diameter={}, cellprobThreshold={}, flowThreshold={}, niter={}, batchSize={}, selectedObjects={}",
+                modelPath, device, numPredictors, tileDims, padding, diameter, cellprobThreshold, flowThreshold, niter, batchSize, pathObjects.size());
         }
 
         // Get the downsample
@@ -217,7 +227,9 @@ public class CpSam {
         NDManager ndManager = NDManager.newBaseManager(Device.fromName(this.device));
 
         try (ndManager) {
-            var inputChannels = getInputChannels(imageData);
+            var inputChannels = (this.channels != null && !this.channels.isEmpty())
+                    ? this.channels
+                    : getInputChannels(imageData);
 
             // Get (or load) the cached predictor pool — model + predictors survive across runs
             BlockingQueue<Predictor<NDList, NDList>> predictors =
@@ -226,27 +238,41 @@ public class CpSam {
             {   // inner scope — no predictor closing here; pool is reused next run
                 try {
                 // Create tiler
+                // sizeWithoutPadding is the non-overlapping step between tile centres;
+                // each tile then reads an extra `padding` pixels of context on each side,
+                // so adjacent tiles overlap by 2*padding pixels — matching InstanSeg's approach.
                 int sizeWithoutPadding = (int) Math.round(effectiveDownsample * (tileDims - (double) padding * 2));
-                Tiler tiler = Tiler.builder(Math.max(256, sizeWithoutPadding))
+                if (sizeWithoutPadding <= 0) {
+                    logger.warn("CPSAM: padding ({}) is too large for tileDims ({}), overlap will be zero — reduce padding or increase tile size", padding, tileDims);
+                }
+                Tiler tiler = Tiler.builder(Math.max(1, sizeWithoutPadding))
                         .alignCenter()
                         .cropTiles(false)
                         .build();
 
                 if (verboseLogging) {
-                    logger.info("CPSAM tiler configured: tileSizeWithoutPadding={}, finalTileSize={}, fullResPadding={}",
-                        sizeWithoutPadding, Math.max(256, sizeWithoutPadding), (int) Math.round(padding * effectiveDownsample));
+                    logger.info("CPSAM tiler configured: tileStep={}, modelInputSize={}, fullResPadding={}, overlapPx={}",
+                        Math.max(1, sizeWithoutPadding), tileDims, (int) Math.round(padding * effectiveDownsample),
+                        (int) Math.round(padding * effectiveDownsample) * 2);
                 }
 
                 // Create processor
                 Processor<Mat, Mat, NDArray[]> processor = new CpSamTileProcessor(
                         predictors, inputChannels, ndManager,
-                        diameter, (float) cellprobThreshold, (float) flowThreshold, niter, batchSize);
+                        diameter, (float) cellprobThreshold, (float) flowThreshold, niter, batchSize,
+                        normalizationDownsample, normalizationMaxDimension,
+                        normalizationLowPercentile, normalizationHighPercentile);
 
                 // Create output handler
                 OutputHandler<Mat, Mat, NDArray[]> outputHandler =
                         OutputHandler.createObjectOutputHandler(new MaskToObjectConverter(preferredOutputType));
 
                 // Create post-processor (merge overlapping objects across tiles)
+                // createObjectOutputHandler (MASK_ONLY) clips each detected cell to the non-overlapping
+                // tile step boundary, so cells at edges are split in half. createSharedTileBoundaryMerger
+                // reconnects the two halves that share a straight tile-edge boundary.
+                // createIoMinMerger would be correct only with PruneObjectOutputHandler (InstanSeg's approach),
+                // where whole-cell duplicates appear in adjacent padded tiles instead of split halves.
                 ObjectProcessor postProcessor = ObjectMerger.createSharedTileBoundaryMerger(0.5)
                         .andThen(OverlapFixer.builder()
                                 .clipOverlaps()
@@ -272,6 +298,15 @@ public class CpSam {
                         .build();
 
                 pixelProcessor.processObjects(taskRunner, imageData, pathObjects);
+
+                // Release PyTorch's CUDA allocator cache so VRAM is freed before the next run.
+                // Without this, PyTorch keeps reserved CUDA blocks resident (appearing as "used"
+                // in nvidia-smi) even after all tensors are freed, causing subsequent runs to start
+                // with near-zero free VRAM and fall back to shared memory (massive slowdown).
+                CpSamUtils.emptyCudaCache();
+                if (verboseLogging) {
+                    CpSamUtils.logVramUsage("after-run");
+                }
 
                 int nObjects = pathObjects.stream().mapToInt(PathObject::nChildObjects).sum();
                 int nTiles = ((CpSamTileProcessor) processor).getTilesProcessedCount();
@@ -302,8 +337,13 @@ public class CpSam {
     }
 
     private List<ColorTransforms.ColorTransform> getInputChannels(ImageData<BufferedImage> imageData) {
-        List<ColorTransforms.ColorTransform> channels = new ArrayList<>();
-        for (int i = 0; i < imageData.getServer().nChannels(); i++) {
+        int total = imageData.getServer().nChannels();
+        int nUsed = Math.min(3, total);
+        if (total > 3) {
+            logger.warn("Image has {} channels — only the first 3 will be read, normalized, and sent to the model", total);
+        }
+        List<ColorTransforms.ColorTransform> channels = new ArrayList<>(nUsed);
+        for (int i = 0; i < nUsed; i++) {
             channels.add(ColorTransforms.createChannelExtractor(i));
         }
         return channels;
@@ -326,7 +366,7 @@ public class CpSam {
 
         private int tileDims = 512;
         private double downsample = -1;
-        private int padding = 80;
+        private int padding = 60;
         private double diameter = 30.0;
         private float cellprobThreshold = 0.0f;
         private float flowThreshold = 0.4f;
@@ -337,6 +377,11 @@ public class CpSam {
         private Class<? extends PathObject> preferredOutputType = PathDetectionObject.class;
         private TaskRunner taskRunner = TaskRunnerUtils.getDefaultInstance().createTaskRunner();
         private CpSamModel model;
+        private List<ColorTransforms.ColorTransform> channels = null;
+        private double normalizationDownsample = Double.NaN; // NaN → derived from normalizationMaxDimension
+        private int normalizationMaxDimension = 2048;
+        private double normalizationLowPercentile = 1.0;
+        private double normalizationHighPercentile = 99.0;
 
         Builder() {}
 
@@ -447,6 +492,53 @@ public class CpSam {
         public Builder nThreads(int nThreads) {
             this.taskRunner = TaskRunnerUtils.getDefaultInstance().createTaskRunner(nThreads);
             this.numPredictors = Math.max(1, nThreads);
+            return this;
+        }
+
+        /**
+         * Set which image channels to use as model inputs (in order).
+         * If not set, the first available channels of the image are used automatically.
+         * Fewer than 3 channels will be zero-padded; more than 3 will be ignored.
+         */
+        public Builder inputChannels(List<ColorTransforms.ColorTransform> channels) {
+            this.channels = channels == null ? null : List.copyOf(channels);
+            return this;
+        }
+
+        /**
+         * Set an explicit downsample factor used when reading the annotation region for
+         * computing global normalization percentiles. When set, {@link #normalizationMaxDimension}
+         * is ignored. Use this when you want reproducible normalization regardless of annotation size.
+         * E.g. {@code .normalizationDownsample(4.0)} reads at 1/4 full resolution.
+         */
+        public Builder normalizationDownsample(double downsample) {
+            this.normalizationDownsample = downsample;
+            return this;
+        }
+
+        /**
+         * Set the maximum image dimension (pixels) used when auto-computing the downsample factor
+         * for global normalization. The downsample is chosen so the larger dimension of the
+         * annotation bounding box does not exceed this value. Default is 2048.
+         */
+        public Builder normalizationMaxDimension(int maxDimension) {
+            this.normalizationMaxDimension = Math.max(64, maxDimension);
+            // Recompute: force NaN so the dimension-based path is taken
+            if (Double.isNaN(this.normalizationDownsample)) {
+                // nothing — already NaN, maxDimension will be read in build()
+            }
+            return this;
+        }
+
+        /**
+         * Set the low and high percentile values used for global per-channel normalization.
+         * Defaults are 1.0 (low) and 99.0 (high).
+         */
+        public Builder normalizationPercentiles(double low, double high) {
+            if (low < 0 || low >= high || high > 100)
+                throw new IllegalArgumentException("Percentiles must satisfy 0 <= low < high <= 100, got " + low + ", " + high);
+            this.normalizationLowPercentile = low;
+            this.normalizationHighPercentile = high;
             return this;
         }
 
