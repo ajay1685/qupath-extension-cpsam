@@ -61,6 +61,9 @@ public class CpSamPreferences {
         private static final BooleanProperty verboseLoggingProperty = PathPrefs.createPersistentPreference(
             "cpsam.verbose_logging", false);
 
+    private static final BooleanProperty savePreprocessedTilesProperty = PathPrefs.createPersistentPreference(
+            "cpsam.save_preprocessed_tiles", false);
+
     /**
      * MPS should work reliably (and much faster) on Apple Silicon, so set as default.
      * Everywhere else, use CPU as we can't count on a GPU/CUDA being available.
@@ -131,5 +134,9 @@ public class CpSamPreferences {
 
     public static BooleanProperty verboseLoggingProperty() {
         return verboseLoggingProperty;
+    }
+
+    public static BooleanProperty savePreprocessedTilesProperty() {
+        return savePreprocessedTilesProperty;
     }
 }

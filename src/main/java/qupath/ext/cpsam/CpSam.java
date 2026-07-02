@@ -14,15 +14,14 @@ import org.slf4j.LoggerFactory;
 import qupath.lib.experimental.pixels.OutputHandler;
 import qupath.lib.experimental.pixels.PixelProcessor;
 import qupath.lib.experimental.pixels.Processor;
+import qupath.lib.gui.QuPathGUI;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ColorTransforms;
 import qupath.lib.objects.PathAnnotationObject;
 import qupath.lib.objects.PathCellObject;
 import qupath.lib.objects.PathDetectionObject;
 import qupath.lib.objects.PathObject;
-import qupath.lib.objects.utils.ObjectMerger;
 import qupath.lib.objects.utils.ObjectProcessor;
-import qupath.lib.objects.utils.OverlapFixer;
 import qupath.lib.objects.utils.Tiler;
 import qupath.lib.plugins.TaskRunner;
 import qupath.lib.plugins.TaskRunnerUtils;
@@ -30,7 +29,11 @@ import qupath.opencv.ops.ImageOps;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -204,8 +207,9 @@ public class CpSam {
         Path modelPath = model.getModelPath();
 
         if (verboseLogging) {
-            logger.info("CPSAM run starting: modelPath={}, device={}, numPredictors={}, tileDims={}, padding={}, diameter={}, cellprobThreshold={}, flowThreshold={}, niter={}, batchSize={}, selectedObjects={}",
-                modelPath, device, numPredictors, tileDims, padding, diameter, cellprobThreshold, flowThreshold, niter, batchSize, pathObjects.size());
+            logger.info("CPSAM model path: {}", modelPath);
+            logger.info("CPSAM inputs: device={}, numPredictors={}, tileDims={}, padding={}, diameter={}, cellprobThreshold={}, flowThreshold={}, niter={}, batchSize={}, selectedObjects={}",
+                device, numPredictors, tileDims, padding, diameter, cellprobThreshold, flowThreshold, niter, batchSize, pathObjects.size());
         }
 
         // Get the downsample
@@ -213,8 +217,6 @@ public class CpSam {
         if (this.downsample > 0) {
             effectiveDownsample = this.downsample;
         } else {
-            // Diameter is in full-resolution pixel units; the TorchScript model handles
-            // internal scaling based on diameter. Always process at full resolution.
             effectiveDownsample = 1.0;
             logger.debug("Defaulting to downsample 1.0 (diameter is in pixel units)");
         }
@@ -234,26 +236,42 @@ public class CpSam {
             // Get (or load) the cached predictor pool — model + predictors survive across runs
             BlockingQueue<Predictor<NDList, NDList>> predictors =
                     getOrLoadPredictors(modelPath, this.device, numPredictors);
-
-            {   // inner scope — no predictor closing here; pool is reused next run
+            // inner scope — no predictor closing here; pool is reused next run
+            {   
                 try {
-                // Create tiler
-                // sizeWithoutPadding is the non-overlapping step between tile centres;
-                // each tile then reads an extra `padding` pixels of context on each side,
-                // so adjacent tiles overlap by 2*padding pixels — matching InstanSeg's approach.
-                int sizeWithoutPadding = (int) Math.round(effectiveDownsample * (tileDims - (double) padding * 2));
-                if (sizeWithoutPadding <= 0) {
-                    logger.warn("CPSAM: padding ({}) is too large for tileDims ({}), overlap will be zero — reduce padding or increase tile size", padding, tileDims);
-                }
-                Tiler tiler = Tiler.builder(Math.max(1, sizeWithoutPadding))
-                        .alignCenter()
-                        .cropTiles(false)
-                        .build();
+                // Tiling strategy: controls step size and overlap between adjacent tiles.
+                CpSamTiling tilingConfig = new CpSamTiling(tileDims, padding);
+                Tiler tiler = tilingConfig.createTiler(effectiveDownsample);
 
-                if (verboseLogging) {
-                    logger.info("CPSAM tiler configured: tileStep={}, modelInputSize={}, fullResPadding={}, overlapPx={}",
-                        Math.max(1, sizeWithoutPadding), tileDims, (int) Math.round(padding * effectiveDownsample),
-                        (int) Math.round(padding * effectiveDownsample) * 2);
+                // Create tile save directory if requested (preference enabled at run start).
+                // Defaults to PROJECT_DIR/cpsam-temp/<timestamp>, mirroring the cellpose-temp convention.
+                Path saveDir = null;
+                if (CpSamPreferences.savePreprocessedTilesProperty().get()) {
+                    try {
+                        // Prefer the QuPath project directory (matches cellpose-temp convention)
+                        Path baseDir = null;
+                        var guiInstance = QuPathGUI.getInstance();
+                        var project = guiInstance != null ? guiInstance.getProject() : null;
+                        if (project != null && project.getPath() != null) {
+                            baseDir = project.getPath().getParent();
+                        }
+                        // Fall back to image file parent, then system temp
+                        if (baseDir == null) {
+                            URI imageUri = imageData.getServer().getURIs().stream().findFirst().orElse(null);
+                            if (imageUri != null && "file".equals(imageUri.getScheme())) {
+                                baseDir = Path.of(imageUri).getParent();
+                            } else {
+                                baseDir = Path.of(System.getProperty("java.io.tmpdir"));
+                            }
+                        }
+                        String timestamp = LocalDateTime.now()
+                                .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+                        saveDir = baseDir.resolve("cpsam-temp").resolve(timestamp);
+                        Files.createDirectories(saveDir);
+                        logger.info("Saving preprocessed tiles to: {}", saveDir);
+                    } catch (Exception e) {
+                        logger.warn("Could not create cpsam-temp directory; tile saving disabled: {}", e.getMessage());
+                    }
                 }
 
                 // Create processor
@@ -261,26 +279,15 @@ public class CpSam {
                         predictors, inputChannels, ndManager,
                         diameter, (float) cellprobThreshold, (float) flowThreshold, niter, batchSize,
                         normalizationDownsample, normalizationMaxDimension,
-                        normalizationLowPercentile, normalizationHighPercentile);
+                        normalizationLowPercentile, normalizationHighPercentile,
+                        saveDir);
 
-                // Create output handler
-                OutputHandler<Mat, Mat, NDArray[]> outputHandler =
-                        OutputHandler.createObjectOutputHandler(new MaskToObjectConverter(preferredOutputType));
+                // Post-processing strategy: output handler (per-tile) + merger (across all tiles).
+                // See CpSamPostProcessing for detailed rationale on the chosen strategies.
+                CpSamPostProcessing postProcessingConfig = new CpSamPostProcessing(preferredOutputType);
+                OutputHandler<Mat, Mat, NDArray[]> outputHandler = postProcessingConfig.createOutputHandler();
+                ObjectProcessor postProcessor = postProcessingConfig.createPostProcessor();
 
-                // Create post-processor (merge overlapping objects across tiles)
-                // createObjectOutputHandler (MASK_ONLY) clips each detected cell to the non-overlapping
-                // tile step boundary, so cells at edges are split in half. createSharedTileBoundaryMerger
-                // reconnects the two halves that share a straight tile-edge boundary.
-                // createIoMinMerger would be correct only with PruneObjectOutputHandler (InstanSeg's approach),
-                // where whole-cell duplicates appear in adjacent padded tiles instead of split halves.
-                ObjectProcessor postProcessor = ObjectMerger.createSharedTileBoundaryMerger(0.5)
-                        .andThen(OverlapFixer.builder()
-                                .clipOverlaps()
-                                .keepFragments(false)
-                                .sortBySolidity()
-                                .build());
-
-                // Create image supplier using ImageOps (same as InstanSeg)
                 // Extracts channels from the image data
                 var imageSupplier = (qupath.lib.experimental.pixels.ImageSupplier<Mat>) params ->
                         ImageOps.buildImageDataOp(inputChannels)
@@ -292,7 +299,7 @@ public class CpSam {
                         .imageSupplier(imageSupplier)
                         .tiler(tiler)
                         .outputHandler(outputHandler)
-                        .padding((int) Math.round(padding * effectiveDownsample))
+                        .padding(tilingConfig.getFullResPadding(effectiveDownsample))
                         .postProcess(postProcessor)
                         .downsample(effectiveDownsample)
                         .build();
@@ -300,10 +307,7 @@ public class CpSam {
                 pixelProcessor.processObjects(taskRunner, imageData, pathObjects);
 
                 // Release PyTorch's CUDA allocator cache so VRAM is freed before the next run.
-                // Without this, PyTorch keeps reserved CUDA blocks resident (appearing as "used"
-                // in nvidia-smi) even after all tensors are freed, causing subsequent runs to start
-                // with near-zero free VRAM and fall back to shared memory (massive slowdown).
-                CpSamUtils.emptyCudaCache();
+                //CpSamUtils.emptyCudaCache();
                 if (verboseLogging) {
                     CpSamUtils.logVramUsage("after-run");
                 }
@@ -340,7 +344,7 @@ public class CpSam {
         int total = imageData.getServer().nChannels();
         int nUsed = Math.min(3, total);
         if (total > 3) {
-            logger.warn("Image has {} channels — only the first 3 will be read, normalized, and sent to the model", total);
+            logger.warn("Image has {} channels — only the first 3 will be used for predictions", total);
         }
         List<ColorTransforms.ColorTransform> channels = new ArrayList<>(nUsed);
         for (int i = 0; i < nUsed; i++) {
@@ -523,7 +527,6 @@ public class CpSam {
          */
         public Builder normalizationMaxDimension(int maxDimension) {
             this.normalizationMaxDimension = Math.max(64, maxDimension);
-            // Recompute: force NaN so the dimension-based path is taken
             if (Double.isNaN(this.normalizationDownsample)) {
                 // nothing — already NaN, maxDimension will be read in build()
             }

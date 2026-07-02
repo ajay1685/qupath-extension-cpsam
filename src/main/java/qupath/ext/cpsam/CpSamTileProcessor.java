@@ -2,30 +2,25 @@ package qupath.ext.cpsam;
 
 import ai.djl.inference.Predictor;
 import ai.djl.ndarray.NDArray;
-import ai.djl.ndarray.NDArrays;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.translate.TranslateException;
+import ij.IJ;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.djl.DjlTools;
-import qupath.lib.awt.common.BufferedImageTools;
-import qupath.lib.experimental.pixels.MeasurementProcessor;
 import qupath.lib.experimental.pixels.Parameters;
 import qupath.lib.experimental.pixels.Processor;
-import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ColorTransforms;
-import qupath.lib.images.servers.PixelType;
 import qupath.lib.regions.RegionRequest;
 import qupath.lib.roi.interfaces.ROI;
 import qupath.opencv.ops.ImageOp;
-import qupath.opencv.ops.ImageOps;
+import qupath.opencv.tools.OpenCVTools;
 
-import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -49,7 +44,6 @@ import java.util.concurrent.atomic.AtomicLong;
 class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
 
     private static final Logger logger = LoggerFactory.getLogger(CpSamTileProcessor.class);
-    private static final double EPSILON = 1e-6;
 
     private final BlockingQueue<Predictor<NDList, NDList>> predictors;
     private final Collection<ColorTransforms.ColorTransform> channels;
@@ -71,12 +65,17 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
     private final AtomicBoolean wasInterrupted = new AtomicBoolean(false);
     private final Map<ROI, ImageOp> normalization = Collections.synchronizedMap(new WeakHashMap<>());
 
+    /** Directory to save normalized tiles into before inference, or {@code null} to skip saving. */
+    private final Path saveDir;
+    private final AtomicInteger saveTileIndex = new AtomicInteger(0);
+
     CpSamTileProcessor(BlockingQueue<Predictor<NDList, NDList>> predictors,
                        Collection<? extends ColorTransforms.ColorTransform> channels, NDManager ndManager,
                        double diameter, float cellprobThreshold, float flowThreshold,
                        int niter, int batchSize,
                        double normalizationDownsample, int normalizationMaxDimension,
-                       double normalizationLowPercentile, double normalizationHighPercentile) {
+                       double normalizationLowPercentile, double normalizationHighPercentile,
+                       Path saveDir) {
         this.predictors = predictors;
         this.channels = List.copyOf(channels);
         this.lowPercentile = normalizationLowPercentile;
@@ -89,12 +88,33 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
         this.flowTensor = ndManager.create(flowThreshold);
         this.niterTensor = ndManager.create((long) niter);
         this.batchSizeTensor = ndManager.create(batchSize);
+        this.saveDir = saveDir;
     }
 
     public int getTilesProcessedCount() { return nTilesProcessed.get(); }
     public int getTilesFailedCount() { return nTilesFailed.get(); }
     public long getPixelsProcessedCount() { return nPixelsProcessed.get(); }
     public boolean wasInterrupted() { return wasInterrupted.get(); }
+
+    /**
+     * Saves the normalized tile mat as a 32-bit TIFF image in {@link #saveDir} for
+     * preprocessing inspection. Uses ImageJ's IJ.save(), which correctly handles
+     * any channel count (including 2-channel images) and preserves float32 precision.
+     * Errors are logged as warnings and do not abort the run.
+     */
+    private void saveTile(Mat mat, RegionRequest region) {
+        int idx = saveTileIndex.getAndIncrement();
+        try {
+            var imp = OpenCVTools.matToImagePlus("tile", mat);
+            String filename = String.format("tile_%04d_x%d_y%d_w%d_h%d.tif",
+                    idx, region.getX(), region.getY(), region.getWidth(), region.getHeight());
+            Path outPath = saveDir.resolve(filename);
+            IJ.save(imp, outPath.toString());
+            logger.debug("Saved preprocessed tile to: {}", outPath);
+        } catch (Exception e) {
+            logger.warn("Failed to save preprocessed tile {}: {}", idx, e.getMessage());
+        }
+    }
 
     @Override
     public NDArray[] process(Parameters<Mat, Mat> params) throws IOException {
@@ -109,11 +129,16 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
 
         ImageOp preprocessing = normalization.computeIfAbsent(
                 params.getParent().getROI(),
-                roi -> getNormalization(params.getImageData(), roi, channels,
+                roi -> CpSamNormalization.buildNormalizationOp(params.getImageData(), roi, channels,
                         lowPercentile, highPercentile,
                         normalizationDownsample, normalizationMaxDimension));
 
         mat = preprocessing.apply(mat);
+
+        // Save the normalized tile image before inference if requested (for preprocessing diagnostics).
+        if (saveDir != null) {
+            saveTile(mat, params.getRegionRequest());
+        }
 
         // Log baseline VRAM once, before the very first inference call of this run.
         if (verboseLogging && nTilesProcessed.get() == 0) {
@@ -137,11 +162,11 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
             float[] maskData;
             long[] maskShape;
             try (NDManager tileManager = ndManager.newSubManager()) {
-                NDArray batchInput = matToBatchInput(mat, tileManager);
+                NDArray batchInput = CpSamUtils.matToBatchInput(mat, tileManager);
 
                 if (verboseLogging) {
                     logger.info("Tile model input BCHW: shape={}, dtype={}", batchInput.getShape(), batchInput.getDataType());
-                    logPerChannelMinMax("Tile normalized BCHW", batchInput.squeeze(0));
+                    CpSamUtils.logPerChannelMinMax("Tile normalized BCHW", batchInput.squeeze(0));
                 }
 
                 if (verboseLogging) {
@@ -149,13 +174,30 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
                             diameterTensor.getFloat(), cellprobTensor.getFloat(), flowTensor.getFloat(), niterTensor.getLong(), batchSizeTensor.getInt());
                 }
 
-                NDList modelInput = new NDList(batchInput, diameterTensor, cellprobTensor, flowTensor, niterTensor, batchSizeTensor);
+                batchInput.setName("img");
+                diameterTensor.setName("diameter");
+                cellprobTensor.setName("cellprob_threshold");
+                flowTensor.setName("flow_threshold");
+                niterTensor.setName("niter");
+                batchSizeTensor.setName("batch_size");
+                
+                NDList modelInput = new NDList(
+                    batchInput,
+                    diameterTensor,
+                    cellprobTensor,
+                    flowTensor,
+                    niterTensor,
+                    batchSizeTensor
+                );
+
                 NDList output = predictor.predict(modelInput);
 
-                // Convert mask to float32 and pull the data into a Java heap array.
-                // This copies GPU → CPU heap while all tensors are still alive, then
-                // everything GPU-side is freed when this scope closes.
-                try (NDArray maskGpu = output.singletonOrThrow().squeeze(0).toType(DataType.FLOAT32, true)) {
+                // Model returns a dict: {"masks": [B,H,W], "flows": [B,2,H,W], "cellprob": [B,H,W]}.
+                // DJL names each NDArray in the output NDList with the dict key.
+                // Extract only the masks tensor; flows and cellprob are not needed here.
+                NDArray rawMasks = output.get("masks");
+                if (rawMasks == null) rawMasks = output.get(0); // fallback if name not set
+                try (NDArray maskGpu = rawMasks.squeeze(0).toType(DataType.FLOAT32, true)) {
                     output.close();
                     maskData  = maskGpu.toFloatArray();
                     maskShape = maskGpu.getShape().getShape();
@@ -202,120 +244,5 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
         }
     }
 
-    /**
-     * Convert a normalized float32 Mat to the model's expected [1, 3, H, W] BCHW tensor.
-     *
-     * The TorchScript wrapper always requires exactly 3 channels (SAM image encoder).
-     * Channel mapping matches Python's {@code transforms.convert_image()}:
-     * <ul>
-     *   <li>C == 3: passed through unchanged</li>
-     *   <li>C &lt; 3: channels 0..C-1 copied, remaining channels zero-padded</li>
-     *   <li>C &gt; 3: only the first 3 channels are used (extra channels discarded)</li>
-     * </ul>
-     *
-     * NOTE: DjlTools.matToNDArray with layout "CHW" routes through opencv_dnn.blobFromImage()
-     * and is safe here because preprocessing has already converted the tile to float32.
-     */
-    private static NDArray matToBatchInput(Mat mat, NDManager manager) {
-        NDArray chw = DjlTools.matToNDArray(manager, mat, "CHW")
-                .toType(DataType.FLOAT32, false);
-        chw = enforceThreeChannels(chw, manager);
-        return chw.expandDims(0);
-    }
-
-    /**
-     * Ensures a CHW NDArray has exactly 3 channels.
-     * Extra channels beyond 3 are dropped; missing channels are zero-padded.
-     */
-    private static NDArray enforceThreeChannels(NDArray chw, NDManager manager) {
-        int c = (int) chw.getShape().get(0);
-        if (c == 3) return chw;
-
-        long h = chw.getShape().get(1);
-        long w = chw.getShape().get(2);
-
-        if (c > 3) {
-            logger.warn("Image has {} channels — only the first 3 will be sent to the model", c);
-        } else {
-            logger.warn("Image has {} channel(s) — zero-padding to 3 channels for the model", c);
-        }
-
-        NDList channelList = new NDList(3);
-        for (int i = 0; i < 3; i++) {
-            channelList.add(i < c
-                    ? chw.get(i).expandDims(0)
-                    : manager.zeros(new Shape(1, h, w), DataType.FLOAT32));
-        }
-        return NDArrays.concat(channelList, 0);
-    }
-
-    private static ImageOp getNormalization(
-            ImageData<BufferedImage> imageData,
-            ROI roi,
-            Collection<ColorTransforms.ColorTransform> channels,
-            double lowPerc,
-            double highPerc,
-            double normDownsample,
-            int normMaxDimension) {
-
-        try {
-            // Resolve downsample: explicit value wins; otherwise auto from max dimension
-            double downsample;
-            if (!Double.isNaN(normDownsample) && normDownsample > 0) {
-                downsample = normDownsample;
-            } else {
-                downsample = Math.max(1.0,
-                        Math.max(roi.getBoundsWidth(), roi.getBoundsHeight()) / (double) normMaxDimension);
-            }
-            var request = RegionRequest.createInstance(imageData.getServerPath(), downsample, roi);
-            BufferedImage image = imageData.getServer().readRegion(request);
-
-            var params = channels.stream().map(colorTransform -> {
-                var mask = BufferedImageTools.createROIMask(image.getWidth(), image.getHeight(), roi, request);
-                float[] maskPix = ColorTransforms.createChannelExtractor(0).extractChannel(null, mask, null);
-                float[] fpix = colorTransform.extractChannel(imageData.getServer(), image, null);
-
-                int ind = 0;
-                for (int i = 0; i < maskPix.length; i++) {
-                    if (maskPix[i] == 255) {
-                        fpix[ind] = fpix[i];
-                        ind++;
-                    }
-                }
-
-                double[] usePixels = new double[ind];
-                for (int i = 0; i < ind; i++) {
-                    usePixels[i] = fpix[i];
-                }
-
-                double lo = MeasurementProcessor.Functions.percentile(lowPerc).apply(usePixels);
-                double hi = MeasurementProcessor.Functions.percentile(highPerc).apply(usePixels);
-                double scale = hi > lo ? 1.0 / (hi - lo + EPSILON) : 0.0;
-                double offset = -lo * scale;
-                return new double[]{offset, scale, lo, hi};
-            }).toList();
-
-            return ImageOps.Core.sequential(
-                    ImageOps.Core.ensureType(PixelType.FLOAT32),
-                    ImageOps.Core.multiply(params.stream().mapToDouble(e -> e[1]).toArray()),
-                    ImageOps.Core.add(params.stream().mapToDouble(e -> e[0]).toArray())
-            );
-        } catch (Exception e) {
-            logger.error("Error preparing cached CPSAM normalization", e);
-        }
-
-        return ImageOps.Core.sequential(
-                ImageOps.Core.ensureType(PixelType.FLOAT32),
-                ImageOps.Normalize.percentile(lowPerc, highPerc, true, EPSILON)
-        );
-    }
-
-    private static void logPerChannelMinMax(String label, NDArray chw) {
-        int channels = (int) chw.getShape().get(0);
-        for (int ch = 0; ch < channels; ch++) {
-            NDArray channel = chw.get(ch);
-            logger.info("{} channel {}: min={}, max={}", label, ch, channel.min().getFloat(), channel.max().getFloat());
-        }
-    }
 
 }

@@ -66,6 +66,17 @@
                                     </Spinner>
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Cell prob threshold">
+                                        <tooltip><Tooltip text="Min probability for cell detection" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <Spinner fx:id="cellProbThresholdSpinner" prefWidth="75.0">
+                                        <valueFactory>
+                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="-3.0" max="3.0" initialValue="0.0" />
+                                        </valueFactory>
+                                    </Spinner>
+                                </HBox>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                                     <Label styleClass="regular" text="Flow threshold">
                                         <tooltip><Tooltip text="Max allowable flow error for cell validation" /></tooltip>
                                     </Label>
@@ -73,17 +84,6 @@
                                     <Spinner fx:id="flowThresholdSpinner" prefWidth="75.0">
                                         <valueFactory>
                                             <SpinnerValueFactory.DoubleSpinnerValueFactory min="0.0" max="10.0" initialValue="0.4" />
-                                        </valueFactory>
-                                    </Spinner>
-                                </HBox>
-                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                                    <Label styleClass="regular" text="Cell prob threshold">
-                                        <tooltip><Tooltip text="Min probability for cell detection" /></tooltip>
-                                    </Label>
-                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                                    <Spinner fx:id="cellProbThresholdSpinner" prefWidth="75.0">
-                                        <valueFactory>
-                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="-2.0" max="2.0" initialValue="0.0" />
                                         </valueFactory>
                                     </Spinner>
                                 </HBox>
@@ -239,6 +239,13 @@
                             </Label>
                             <Pane minWidth="5" HBox.hgrow="ALWAYS" />
                             <CheckBox fx:id="randomColorsCheckBox" styleClass="regular" />
+                        </HBox>
+                        <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                            <Label styleClass="regular" text="Save preprocessed tiles">
+                                <tooltip><Tooltip text="Save each normalized tile as a 16-bit TIFF before inference. Files are written to a timestamped 'cpsam-debug-tiles' folder next to the image. Use for inspecting preprocessing results." /></tooltip>
+                            </Label>
+                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                            <CheckBox fx:id="savePreprocessedTilesCheckBox" styleClass="regular" />
                         </HBox>
                     </children>
                 </VBox>

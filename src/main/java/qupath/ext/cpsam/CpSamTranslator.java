@@ -14,9 +14,10 @@ import org.slf4j.LoggerFactory;
  * and the CPSAM model's multi-input format.
  *
  * Model input: (img: Tensor[BCHW], diameter, cellprob_threshold, flow_threshold, niter, batch_size)
- * Model output: [mask: Tensor[1xHxW]]
+ * Model output: Dict{"masks": Tensor[BxHxW], "flows": Tensor[Bx2xHxW], "cellprob": Tensor[BxHxW]}
  *
  * This translator packages the image NDArray with scalar parameters for the model.
+ * Only the "masks" tensor is returned; flows and cellprob are discarded.
  */
 public class CpSamTranslator implements Translator<NDArray, NDArray[]> {
 
@@ -80,7 +81,9 @@ public class CpSamTranslator implements Translator<NDArray, NDArray[]> {
     }
 
     /**
-     * Convert model output (mask tensor) back to NDArray[].
+     * Convert model output dict back to NDArray[] containing only the instance mask.
+     * The model returns Dict{"masks": [B,H,W], "flows": [B,2,H,W], "cellprob": [B,H,W]}.
+     * DJL names each NDArray in the output NDList with the dict key.
      */
     @Override
     public NDArray[] processOutput(TranslatorContext ctx, NDList output) {
@@ -89,14 +92,16 @@ public class CpSamTranslator implements Translator<NDArray, NDArray[]> {
             throw new IllegalStateException("CPSAM model returned no outputs");
         }
 
-        NDArray mask = output.get(0);
+        // Extract masks by dict key; fall back to index 0 if name is not set.
+        NDArray mask = output.get("masks");
+        if (mask == null) mask = output.get(0);
 
         if (verboseLogging) {
-            logger.info("Translator raw output[0]: shape={}, dtype={}", mask.getShape(), mask.getDataType());
+            logger.info("Translator raw masks output: shape={}, dtype={}", mask.getShape(), mask.getDataType());
         }
 
         if (mask.getShape().dimension() != 3) {
-            throw new IllegalStateException("CPSAM model output must have shape [B, H, W], got " + mask.getShape());
+            throw new IllegalStateException("CPSAM model masks output must have shape [B, H, W], got " + mask.getShape());
         }
 
         long batchSize = mask.getShape().get(0);
