@@ -52,9 +52,6 @@ public class CpSamPreferences {
     private static final BooleanProperty makeMeasurementsProperty = PathPrefs.createPersistentPreference(
             "cpsam.measurements", true);
 
-    private static final BooleanProperty randomColorsProperty = PathPrefs.createPersistentPreference(
-            "cpsam.random_colors", false);
-
     private static final IntegerProperty numThreadsProperty = PathPrefs.createPersistentPreference(
             "cpsam.num_threads", GeneralTools.clipValue(Runtime.getRuntime().availableProcessors() / 2, 1, 4));
 
@@ -122,10 +119,6 @@ public class CpSamPreferences {
 
     public static BooleanProperty makeMeasurementsProperty() {
         return makeMeasurementsProperty;
-    }
-
-    public static BooleanProperty randomColorsProperty() {
-        return randomColorsProperty;
     }
 
     public static IntegerProperty numThreadsProperty() {

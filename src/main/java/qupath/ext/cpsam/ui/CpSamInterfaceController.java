@@ -80,10 +80,6 @@ public class CpSamInterfaceController extends VBox {
     @FXML
     private ComboBox<String> comboOutputType;
     @FXML
-    private CheckBox randomColorsCheckBox;
-    @FXML
-    private CheckBox savePreprocessedTilesCheckBox;
-    @FXML
     private Button runButton;
     @FXML
     private Label labelMessage;
@@ -197,10 +193,6 @@ public class CpSamInterfaceController extends VBox {
                 .or(pendingTask.isNotNull())
                 .or(Bindings.createBooleanBinding(() -> modelPathBinding.get() == null, modelPathBinding))
         );
-
-        // Save preprocessed tiles checkbox
-        savePreprocessedTilesCheckBox.selectedProperty().bindBidirectional(
-                CpSamPreferences.savePreprocessedTilesProperty());
 
         // Model path label tooltip
         modelPathLabel.setOnMouseClicked(e -> {

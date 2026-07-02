@@ -65,6 +65,11 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 				.category("CPSAM extension")
 				.description("Log detailed CPSAM pipeline diagnostics for debugging")
 				.build();
+		var savePreprocessedTilesItem = new PropertyItemBuilder<>(CpSamPreferences.savePreprocessedTilesProperty(), Boolean.class)
+				.name("Save preprocessed tiles")
+				.category("CPSAM extension")
+				.description("Save each normalized tile as a 16-bit TIFF before inference. Files are written to a timestamped 'cpsam-debug-tiles' folder next to the image.")
+				.build();
 		qupath.getPreferencePane()
 				.getPropertySheet()
 				.getItems()
@@ -73,6 +78,10 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 				.getPropertySheet()
 				.getItems()
 				.add(verboseLoggingItem);
+		qupath.getPreferencePane()
+				.getPropertySheet()
+				.getItems()
+				.add(savePreprocessedTilesItem);
 	}
 
 

@@ -230,26 +230,7 @@
                 </VBox>
             </TitledPane>
 
-            <TitledPane animated="false" maxHeight="Infinity" text="Options" VBox.vgrow="NEVER">
-                <VBox alignment="TOP_CENTER" spacing="7.5" styleClass="standard-padding">
-                    <children>
-                        <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                            <Label styleClass="regular" text="Random colors">
-                                <tooltip><Tooltip text="Assign random colors to detected objects" /></tooltip>
-                            </Label>
-                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                            <CheckBox fx:id="randomColorsCheckBox" styleClass="regular" />
-                        </HBox>
-                        <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                            <Label styleClass="regular" text="Save preprocessed tiles">
-                                <tooltip><Tooltip text="Save each normalized tile as a 16-bit TIFF before inference. Files are written to a timestamped 'cpsam-debug-tiles' folder next to the image. Use for inspecting preprocessing results." /></tooltip>
-                            </Label>
-                            <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                            <CheckBox fx:id="savePreprocessedTilesCheckBox" styleClass="regular" />
-                        </HBox>
-                    </children>
-                </VBox>
-            </TitledPane>
+
         </VBox>
     </children>
 </fx:root>
