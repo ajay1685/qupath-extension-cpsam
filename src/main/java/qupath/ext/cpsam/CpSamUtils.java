@@ -1,15 +1,9 @@
 package qupath.ext.cpsam;
 
 import ai.djl.ndarray.NDArray;
-import ai.djl.ndarray.NDArrays;
-import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
-import ai.djl.ndarray.types.DataType;
-import ai.djl.ndarray.types.Shape;
-import org.bytedeco.opencv.opencv_core.Mat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.djl.DjlTools;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -89,52 +83,6 @@ class CpSamUtils {
         } catch (Exception e) {
             logger.debug("VRAM query unavailable: {}", e.getMessage());
         }
-    }
-
-    /**
-     * Convert a normalized float32 Mat to the model's expected [1, 3, H, W] BCHW tensor.
-     *
-     * The TorchScript wrapper always requires exactly 3 channels (SAM image encoder).
-     * Channel mapping matches Python's {@code transforms.convert_image()}:
-     * <ul>
-     *   <li>C == 3: passed through unchanged</li>
-     *   <li>C &lt; 3: channels 0..C-1 copied, remaining channels zero-padded</li>
-     *   <li>C &gt; 3: only the first 3 channels are used (extra channels discarded)</li>
-     * </ul>
-     *
-     * NOTE: DjlTools.matToNDArray with layout "CHW" routes through opencv_dnn.blobFromImage()
-     * and is safe here because preprocessing has already converted the tile to float32.
-     */
-    static NDArray matToBatchInput(Mat mat, NDManager manager) {
-        NDArray chw = DjlTools.matToNDArray(manager, mat, "CHW").toType(DataType.FLOAT32, false);
-        chw = enforceThreeChannels(chw, manager);
-        return chw.expandDims(0);
-    }
-
-    /**
-     * Ensures a CHW NDArray has exactly 3 channels.
-     * Extra channels beyond 3 are dropped; missing channels are zero-padded.
-     */
-    static NDArray enforceThreeChannels(NDArray chw, NDManager manager) {
-        int c = (int) chw.getShape().get(0);
-        if (c == 3) return chw;
-
-        long h = chw.getShape().get(1);
-        long w = chw.getShape().get(2);
-
-        if (c > 3) {
-            logger.warn("Image has {} channels \u2014 only the first 3 will be sent to the model", c);
-        } else {
-            logger.warn("Image has {} channel(s) \u2014 zero-padding to 3 channels for the model", c);
-        }
-
-        NDList channelList = new NDList(3);
-        for (int i = 0; i < 3; i++) {
-            channelList.add(i < c
-                    ? chw.get(i).expandDims(0)
-                    : manager.zeros(new Shape(1, h, w), DataType.FLOAT32));
-        }
-        return NDArrays.concat(channelList, 0);
     }
 
     /**

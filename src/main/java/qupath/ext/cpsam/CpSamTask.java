@@ -72,6 +72,8 @@ public class CpSamTask extends Task<Void> {
     @Override
     protected Void call() {
         int nThreads = CpSamPreferences.numThreadsProperty().get();
+        double normLow = CpSamPreferences.normLowProperty().get();
+        double normHigh = CpSamPreferences.normHighProperty().get();
         var taskRunner = new TaskRunnerFX(QuPathGUI.getInstance(), nThreads);
 
         var selectedObjects = imageData.getHierarchy().getSelectionModel().getSelectedObjects();
@@ -96,6 +98,7 @@ public class CpSamTask extends Task<Void> {
                     .tileDims(tileSize)
                     .interTilePadding(tilePadding)
                     .inputChannels(buildChannelTransforms())
+                    .normalizationPercentiles(normLow, normHigh)
                     .taskRunner(taskRunner)
                     .preferredOutputType(preferredOutputType)
                     .build()
@@ -132,6 +135,7 @@ public class CpSamTask extends Task<Void> {
                                     .numPredictors(%d)
                                     .tileDims(%d)
                                     .interTilePadding(%d)%s
+                                    .normalizationPercentiles(%.1f, %.1f)
                                     .outputDetections()
                                     .build()
                                     .detectObjects()
@@ -139,7 +143,7 @@ public class CpSamTask extends Task<Void> {
                                 modelPathStr.replace("\\", "/"),
                                 device, diameter, cellprobThreshold, flowThreshold,
                                 niter, batchSize, nThreads, tileSize, tilePadding,
-                                channelLine
+                                channelLine, normLow, normHigh
                         ).strip()
                 )));
 

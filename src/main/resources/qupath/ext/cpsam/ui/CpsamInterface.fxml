@@ -197,6 +197,37 @@
 
                         <Separator prefWidth="200.0" />
 
+                        <!-- Normalization -->
+                        <Label styleClass="regular" text="Normalization" />
+                        <VBox styleClass="standard-spacing">
+                            <children>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Norm low percentile">
+                                        <tooltip><Tooltip text="Lower percentile for per-channel intensity normalization" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <Spinner fx:id="normLowSpinner" prefWidth="75.0">
+                                        <valueFactory>
+                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="0.0" max="100.0" initialValue="1.0" amountToStepBy="0.5" />
+                                        </valueFactory>
+                                    </Spinner>
+                                </HBox>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Norm high percentile">
+                                        <tooltip><Tooltip text="Upper percentile for per-channel intensity normalization" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <Spinner fx:id="normHighSpinner" prefWidth="75.0">
+                                        <valueFactory>
+                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="0.0" max="100.0" initialValue="99.0" amountToStepBy="0.5" />
+                                        </valueFactory>
+                                    </Spinner>
+                                </HBox>
+                            </children>
+                        </VBox>
+
+                        <Separator prefWidth="200.0" />
+
                         <!-- Output -->
                         <Label styleClass="regular" text="Output" />
                         <VBox styleClass="standard-spacing">

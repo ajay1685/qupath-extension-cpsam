@@ -100,7 +100,6 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
      * Saves the normalized tile mat as a 32-bit TIFF image in {@link #saveDir} for
      * preprocessing inspection. Uses ImageJ's IJ.save(), which correctly handles
      * any channel count (including 2-channel images) and preserves float32 precision.
-     * Errors are logged as warnings and do not abort the run.
      */
     private void saveTile(Mat mat, RegionRequest region) {
         int idx = saveTileIndex.getAndIncrement();
@@ -148,7 +147,7 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
         Predictor<NDList, NDList> predictor = null;
         try {
             predictor = predictors.take();
-
+            // This fixes the GPU VRAM growing issue for now...
             // Use a sub-manager scoped to this tile so all intermediate GPU tensors
             // (batchInput, backbone activations, etc.) are released immediately after
             // predict() returns — before the next tile starts.  Without this, the
@@ -157,12 +156,11 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
             //
             // We copy the mask to a Java float[] inside the scope, then reconstruct
             // a fresh NDArray under ndManager.  This avoids relying on attach() to
-            // rescue a tensor from a closing sub-manager, which is unreliable in this
-            // DJL version.
+            // rescue a tensor from a closing sub-manager.
             float[] maskData;
             long[] maskShape;
             try (NDManager tileManager = ndManager.newSubManager()) {
-                NDArray batchInput = CpSamUtils.matToBatchInput(mat, tileManager);
+                NDArray batchInput = CpSamPreProcessing.matToBatchInput(mat, tileManager);
 
                 if (verboseLogging) {
                     logger.info("Tile model input BCHW: shape={}, dtype={}", batchInput.getShape(), batchInput.getDataType());
@@ -193,7 +191,6 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
                 NDList output = predictor.predict(modelInput);
 
                 // Model returns a dict: {"masks": [B,H,W], "flows": [B,2,H,W], "cellprob": [B,H,W]}.
-                // DJL names each NDArray in the output NDList with the dict key.
                 // Extract only the masks tensor; flows and cellprob are not needed here.
                 NDArray rawMasks = output.get("masks");
                 if (rawMasks == null) rawMasks = output.get(0); // fallback if name not set

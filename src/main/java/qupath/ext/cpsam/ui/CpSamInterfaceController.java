@@ -80,6 +80,10 @@ public class CpSamInterfaceController extends VBox {
     @FXML
     private ComboBox<String> comboOutputType;
     @FXML
+    private Spinner<Double> normLowSpinner;
+    @FXML
+    private Spinner<Double> normHighSpinner;
+    @FXML
     private Button runButton;
     @FXML
     private Label labelMessage;
@@ -163,6 +167,18 @@ public class CpSamInterfaceController extends VBox {
             CpSamPreferences.numThreadsProperty().get());
         threadSpinner.setValueFactory(threadFactory);
         threadFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.numThreadsProperty().set(n));
+
+        // Norm low percentile
+        SpinnerValueFactory.DoubleSpinnerValueFactory normLowFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(
+                0.0, 100.0, CpSamPreferences.normLowProperty().get(), 0.5);
+        normLowSpinner.setValueFactory(normLowFactory);
+        normLowFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.normLowProperty().set(n));
+
+        // Norm high percentile
+        SpinnerValueFactory.DoubleSpinnerValueFactory normHighFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(
+                0.0, 100.0, CpSamPreferences.normHighProperty().get(), 0.5);
+        normHighSpinner.setValueFactory(normHighFactory);
+        normHighFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.normHighProperty().set(n));
     }
 
     private void initChoiceBoxes() {
@@ -336,7 +352,7 @@ public class CpSamInterfaceController extends VBox {
 
     /**
      * Returns the ordered list of non-(None) channel names from the three channel combos.
-     * Trailing (None) selections stop collection; enforceThreeChannels() will zero-pad those slots.
+     * Trailing (None) selections stop collection; CpSamPreProcessing.enforceThreeChannels() will zero-pad those slots.
      */
     private List<String> getSelectedChannelNames() {
         List<String> result = new ArrayList<>(3);

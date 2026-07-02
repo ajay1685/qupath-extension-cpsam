@@ -38,7 +38,7 @@ public class CpSamPreferences {
             "cpsam.batch_size", 1);
 
     private static final IntegerProperty tileSizeProperty = PathPrefs.createPersistentPreference(
-            "cpsam.tile_size", 2048);
+            "cpsam.tile_size", 1024);
 
     private static final IntegerProperty tilePaddingProperty = PathPrefs.createPersistentPreference(
             "cpsam.tile_padding", 64);

@@ -18,6 +18,18 @@ import org.slf4j.LoggerFactory;
  *
  * This translator packages the image NDArray with scalar parameters for the model.
  * Only the "masks" tensor is returned; flows and cellprob are discarded.
+ *
+ * <p>Integration notes:
+ * <ol>
+ *   <li>Load the model with {@code Criteria<NDArray, NDArray[]>} and
+ *       {@code .optTranslator(new CpSamTranslator(...))} instead of the current
+ *       raw {@code Criteria<NDList, NDList>} approach in {@code CpSam.java}.</li>
+ *   <li>In {@code CpSamTileProcessor}, replace the manual NDList construction and
+ *       {@code predictor.predict(NDList)} call with a typed
+ *       {@code Predictor<NDArray, NDArray[]>} and pass only the image NDArray.</li>
+ *   <li>Remove the manual squeeze/toType from the tile processor — this translator
+ *       already normalises the mask in {@code processOutput}.</li>
+ * </ol>
  */
 public class CpSamTranslator implements Translator<NDArray, NDArray[]> {
 
@@ -60,8 +72,15 @@ public class CpSamTranslator implements Translator<NDArray, NDArray[]> {
         // batch_size as int32 scalar (Groovy: manager.create(int BATCH_SIZE))
         NDArray batchSizeTensor = manager.create(batchSize);
 
-        // Package all inputs into a single list
+        // Package all inputs into a single list.
+        // Names must match the TorchScript model's forward() parameter names.
         NDList inputs = new NDList();
+        img.setName("img");
+        diameterTensor.setName("diameter");
+        cellprobTensor.setName("cellprob_threshold");
+        flowTensor.setName("flow_threshold");
+        niterTensor.setName("niter");
+        batchSizeTensor.setName("batch_size");
         inputs.add(img);
         inputs.add(diameterTensor);
         inputs.add(cellprobTensor);

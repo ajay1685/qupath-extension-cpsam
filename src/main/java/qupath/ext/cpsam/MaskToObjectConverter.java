@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Converts CPSAM integer mask output (float32 NDArray [H,W]) to QuPath PathObjects.
+ * Converts CPSAM integer mask output (float32 NDArray [H,W]) to PathObjects.
  * Uses ContourTracing.createObjects — processes all labels in a single pass.
  */
 class MaskToObjectConverter implements OutputHandler.OutputToObjectConverter<Mat, Mat, NDArray[]> {
