@@ -7,7 +7,7 @@ import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.translate.TranslateException;
-import ij.IJ;
+//import ij.IJ;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +17,7 @@ import qupath.lib.images.servers.ColorTransforms;
 import qupath.lib.regions.RegionRequest;
 import qupath.lib.roi.interfaces.ROI;
 import qupath.opencv.ops.ImageOp;
-import qupath.opencv.tools.OpenCVTools;
+//import qupath.opencv.tools.OpenCVTools;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -67,7 +67,7 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
 
     /** Directory to save normalized tiles into before inference, or {@code null} to skip saving. */
     private final Path saveDir;
-    private final AtomicInteger saveTileIndex = new AtomicInteger(0);
+    //private final AtomicInteger saveTileIndex = new AtomicInteger(0);
 
     CpSamTileProcessor(BlockingQueue<Predictor<NDList, NDList>> predictors,
                        Collection<? extends ColorTransforms.ColorTransform> channels, NDManager ndManager,
@@ -100,7 +100,7 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
      * Saves the normalized tile mat as a 32-bit TIFF image in {@link #saveDir} for
      * preprocessing inspection. Uses ImageJ's IJ.save(), which correctly handles
      * any channel count (including 2-channel images) and preserves float32 precision.
-     */
+
     private void saveTile(Mat mat, RegionRequest region) {
         int idx = saveTileIndex.getAndIncrement();
         try {
@@ -114,6 +114,7 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
             logger.warn("Failed to save preprocessed tile {}: {}", idx, e.getMessage());
         }
     }
+    */
 
     @Override
     public NDArray[] process(Parameters<Mat, Mat> params) throws IOException {
@@ -136,7 +137,8 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
 
         // Save the normalized tile image before inference if requested (for preprocessing diagnostics).
         if (saveDir != null) {
-            saveTile(mat, params.getRegionRequest());
+            //saveTile(mat, params.getRegionRequest());
+            CpSamTileSaveDir.savePreprocessedTile(mat, params.getRegionRequest(), saveDir);
         }
 
         // Log baseline VRAM once, before the very first inference call of this run.

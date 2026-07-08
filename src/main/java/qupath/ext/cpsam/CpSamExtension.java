@@ -120,9 +120,9 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 				stage.setScene(scene);
 				stage.initOwner(QuPathGUI.getInstance().getStage());
 				stage.setTitle(resources.getString("title"));
-				stage.setResizable(true);
+				stage.setResizable(false);
 				// Free cached GPU model when the panel is closed
-				stage.setOnHidden(e -> CpSam.clearModelCache());
+				//stage.setOnHidden(e -> CpSam.clearModelCache());
 				//stage.setOnHidden(e -> CpSamUtils.emptyCudaCache());
 			} catch (IOException e) {
 				logger.error("Failed to load CPSAM UI", e);

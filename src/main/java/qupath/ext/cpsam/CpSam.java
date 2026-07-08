@@ -118,6 +118,7 @@ public class CpSam {
             cachedModelPath = null;
             cachedDevice = null;
         }
+        //CpSamUtils.emptyCudaCache();
     }
 
     private final int tileDims;
@@ -138,8 +139,8 @@ public class CpSam {
     private final int normalizationMaxDimension;
     private final double normalizationLowPercentile;
     private final double normalizationHighPercentile;
-    private final boolean measureShape;
-    private final boolean measureIntensity;
+    private final boolean measureShape; 
+    private final boolean measureIntensity; 
 
     private CpSam(Builder builder) {
         this.tileDims = builder.tileDims;
@@ -196,180 +197,6 @@ public class CpSam {
         Objects.requireNonNull(imageData, "No imageData available");
         Objects.requireNonNull(pathObjects, "No objects available");
         return runCpSam(imageData, pathObjects);
-    }
-
-    private CpSamResults runCpSam(ImageData<BufferedImage> imageData,
-                                    Collection<? extends PathObject> pathObjects) {
-        long startTime = System.currentTimeMillis();
-        boolean verboseLogging = CpSamPreferences.verboseLoggingProperty().get();
-
-        if (!model.isValid()) {
-            return new CpSamResults(0, 0, 0, 0,
-                    System.currentTimeMillis() - startTime, false);
-        }
-
-        Path modelPath = model.getModelPath();
-
-        if (verboseLogging) {
-            logger.info("CPSAM model path: {}", modelPath);
-            logger.info("CPSAM inputs: device={}, numPredictors={}, tileDims={}, padding={}, diameter={}, cellprobThreshold={}, flowThreshold={}, niter={}, batchSize={}, selectedObjects={}",
-                device, numPredictors, tileDims, padding, diameter, cellprobThreshold, flowThreshold, niter, batchSize, pathObjects.size());
-        }
-
-        // Get the downsample
-        double effectiveDownsample;
-        if (this.downsample > 0) {
-            effectiveDownsample = this.downsample;
-        } else {
-            effectiveDownsample = 1.0;
-            logger.debug("Defaulting to downsample 1.0 (diameter is in pixel units)");
-        }
-
-        if (verboseLogging) {
-            logger.info("CPSAM effective downsample: {}", effectiveDownsample);
-        }
-
-        // Create NDManager for the device
-        NDManager ndManager = NDManager.newBaseManager(Device.fromName(this.device));
-
-        try (ndManager) {
-            var inputChannels = (this.channels != null && !this.channels.isEmpty())
-                    ? this.channels
-                    : getInputChannels(imageData);
-
-            // Get (or load) the cached predictor pool — model + predictors survive across runs
-            BlockingQueue<Predictor<NDList, NDList>> predictors =
-                    getOrLoadPredictors(modelPath, this.device, numPredictors);
-            // inner scope — no predictor closing here; pool is reused next run
-            {   
-                try {
-                // Tiling strategy: controls step size and overlap between adjacent tiles.
-                CpSamTiling tilingConfig = new CpSamTiling(tileDims, padding);
-                Tiler tiler = tilingConfig.createTiler(effectiveDownsample);
-
-                // Create tile save directory if requested (preference enabled at run start).
-                // Defaults to PROJECT_DIR/cpsam-temp/<timestamp>, mirroring the cellpose-temp convention.
-                Path saveDir = null;
-                if (CpSamPreferences.savePreprocessedTilesProperty().get()) {
-                    try {
-                        // Prefer the QuPath project directory
-                        Path baseDir = null;
-                        var guiInstance = QuPathGUI.getInstance();
-                        var project = guiInstance != null ? guiInstance.getProject() : null;
-                        if (project != null && project.getPath() != null) {
-                            baseDir = project.getPath().getParent();
-                        }
-                        // Fall back to image file parent, then system temp
-                        if (baseDir == null) {
-                            URI imageUri = imageData.getServer().getURIs().stream().findFirst().orElse(null);
-                            if (imageUri != null && "file".equals(imageUri.getScheme())) {
-                                baseDir = Path.of(imageUri).getParent();
-                            } else {
-                                baseDir = Path.of(System.getProperty("java.io.tmpdir"));
-                            }
-                        }
-                        String timestamp = LocalDateTime.now()
-                                .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-                        saveDir = baseDir.resolve("cpsam-temp").resolve(timestamp);
-                        Files.createDirectories(saveDir);
-                        logger.info("Saving preprocessed tiles to: {}", saveDir);
-                    } catch (Exception e) {
-                        logger.warn("Could not create cpsam-temp directory; tile saving disabled: {}", e.getMessage());
-                    }
-                }
-
-                // Create processor
-                Processor<Mat, Mat, NDArray[]> processor = new CpSamTileProcessor(
-                        predictors, inputChannels, ndManager,
-                        diameter, (float) cellprobThreshold, (float) flowThreshold, niter, batchSize,
-                        normalizationDownsample, normalizationMaxDimension,
-                        normalizationLowPercentile, normalizationHighPercentile,
-                        saveDir);
-
-                // Post-processing strategy: output handler (per-tile) + merger (across all tiles).
-                // See CpSamPostProcessing for detailed rationale on the chosen strategies.
-                CpSamPostProcessing postProcessingConfig = new CpSamPostProcessing(preferredOutputType);
-                OutputHandler<Mat, Mat, NDArray[]> outputHandler = postProcessingConfig.createOutputHandler();
-                ObjectProcessor postProcessor = postProcessingConfig.createPostProcessor();
-
-                // Extracts channels from the image data
-                var imageSupplier = (qupath.lib.experimental.pixels.ImageSupplier<Mat>) params ->
-                        ImageOps.buildImageDataOp(inputChannels)
-                                .apply(params.getImageData(), params.getRegionRequest());
-
-                // Build and run PixelProcessor
-                var pixelProcessor = PixelProcessor.<Mat, Mat, NDArray[]>builder()
-                        .processor(processor)
-                        .imageSupplier(imageSupplier)
-                        .tiler(tiler)
-                        .outputHandler(outputHandler)
-                        .padding(tilingConfig.getFullResPadding(effectiveDownsample))
-                        .postProcess(postProcessor)
-                        .downsample(effectiveDownsample)
-                        .build();
-
-                pixelProcessor.processObjects(taskRunner, imageData, pathObjects);
-
-                // Post-detection measurements
-                if (measureShape || measureIntensity) {
-                    var allDetected = pathObjects.stream()
-                            .flatMap(p -> p.getChildObjects().stream())
-                            .toList();
-                    if (!allDetected.isEmpty()) {
-                        if (measureShape) {
-                            CpSamMeasurements.addShapeMeasurements(imageData, allDetected);
-                        }
-                        if (measureIntensity) {
-                            CpSamMeasurements.addIntensityMeasurements(imageData, allDetected,
-                                    effectiveDownsample, numPredictors);
-                        }
-                        imageData.getHierarchy().fireObjectMeasurementsChangedEvent(null, allDetected);
-                    }
-                }
-                //CpSamUtils.emptyCudaCache();
-                if (verboseLogging) {
-                    CpSamUtils.logVramUsage("after-run");
-                }
-
-                int nObjects = pathObjects.stream().mapToInt(PathObject::nChildObjects).sum();
-                int nTiles = ((CpSamTileProcessor) processor).getTilesProcessedCount();
-                int nFailed = ((CpSamTileProcessor) processor).getTilesFailedCount();
-                long nPixels = ((CpSamTileProcessor) processor).getPixelsProcessedCount();
-                boolean interrupted = ((CpSamTileProcessor) processor).wasInterrupted();
-
-                long totalElapsedMs = System.currentTimeMillis() - startTime;
-                if (verboseLogging) {
-                    logger.info("CPSAM run finished: tilesProcessed={}, tilesFailed={}, pixelsProcessed={}, outputObjects={}, interrupted={}, elapsedMs={} ({} s)",
-                            nTiles, nFailed, nPixels, nObjects, interrupted, totalElapsedMs, String.format("%.2f", totalElapsedMs / 1000.0));
-                }
-
-                return new CpSamResults(nPixels, nTiles, nFailed, nObjects,
-                        totalElapsedMs, interrupted);
-                } catch (Exception ex) {
-                    // If inference failed, evict the predictor cache — CUDA state may be corrupt
-                    logger.warn("CPSAM run failed; evicting predictor cache to force fresh state on next run", ex);
-                    clearModelCache();
-                    throw ex;
-                }
-            }   // end inner scope — predictors remain cached for next run
-        } catch (Exception e) {
-            logger.error("Error running CPSAM detection", e);
-            return new CpSamResults(0, 0, 0, 0,
-                    System.currentTimeMillis() - startTime, e instanceof InterruptedException);
-        }
-    }
-
-    private List<ColorTransforms.ColorTransform> getInputChannels(ImageData<BufferedImage> imageData) {
-        int total = imageData.getServer().nChannels();
-        int nUsed = Math.min(3, total);
-        if (total > 3) {
-            logger.warn("Image has {} channels — only the first 3 will be used for predictions", total);
-        }
-        List<ColorTransforms.ColorTransform> channels = new ArrayList<>(nUsed);
-        for (int i = 0; i < nUsed; i++) {
-            channels.add(ColorTransforms.createChannelExtractor(i));
-        }
-        return channels;
     }
 
     /**
@@ -547,7 +374,7 @@ public class CpSam {
          * annotation bounding box does not exceed this value. Default is 2048.
          */
         public Builder normalizationMaxDimension(int maxDimension) {
-            this.normalizationMaxDimension = Math.max(64, maxDimension);
+            this.normalizationMaxDimension = Math.max(4096, maxDimension);
             if (Double.isNaN(this.normalizationDownsample)) {
                 // nothing — already NaN, maxDimension will be read in build()
             }
@@ -588,4 +415,153 @@ public class CpSam {
             return new CpSam(this);
         }
     }
+
+
+    /**
+     * Run CPSAM detection on the specified image and PathObjects.
+     * Returns a CpSamResults object containing counts and timing information.
+     */
+    private CpSamResults runCpSam(ImageData<BufferedImage> imageData,
+                                        Collection<? extends PathObject> pathObjects) {
+            long startTime = System.currentTimeMillis();
+            boolean verboseLogging = CpSamPreferences.verboseLoggingProperty().get();
+
+            if (!model.isValid()) {
+                return new CpSamResults(0, 0, 0, 0,
+                        System.currentTimeMillis() - startTime, false);
+            }
+
+            Path modelPath = model.getModelPath();
+
+            if (verboseLogging) {
+                logger.info("CPSAM model path: {}", modelPath);
+                logger.info("CPSAM inputs: device={}, numPredictors={}, tileDims={}, padding={}, diameter={}, cellprobThreshold={}, flowThreshold={}, niter={}, batchSize={}, selectedObjects={}",
+                    device, numPredictors, tileDims, padding, diameter, cellprobThreshold, flowThreshold, niter, batchSize, pathObjects.size());
+            }
+
+            // Get the downsample
+            double effectiveDownsample;
+            if (this.downsample > 0) {
+                effectiveDownsample = this.downsample;
+            } else {
+                effectiveDownsample = 1.0;
+                logger.debug("Defaulting to downsample 1.0 (diameter is in pixel units)");
+            }
+
+            if (verboseLogging) {
+                logger.info("CPSAM effective downsample: {}", effectiveDownsample);
+            }
+
+            // Create NDManager for the device
+            NDManager ndManager = NDManager.newBaseManager(Device.fromName(this.device));
+
+            try {
+                try (ndManager) {
+                    var inputChannels = (this.channels != null && !this.channels.isEmpty())
+                            ? this.channels
+                            : CpSamPreProcessing.getInputChannels(imageData);
+
+                    // Get (or load) the cached predictor pool — model + predictors survive across runs
+                    BlockingQueue<Predictor<NDList, NDList>> predictors =
+                            getOrLoadPredictors(modelPath, this.device, numPredictors);
+                    
+                    // inner scope — no predictor closing here; pool is reused next run
+                    {   
+                        try {
+                            // Tiling strategy: controls step size and overlap between adjacent tiles.
+                            CpSamTiling tilingConfig = new CpSamTiling(tileDims, padding);
+                            Tiler tiler = tilingConfig.createTiler(effectiveDownsample);
+
+                            // Create tile save directory if requested (preference enabled at run start).
+                            Path saveDir = null;
+                            if (CpSamPreferences.savePreprocessedTilesProperty().get()) {
+                                saveDir = CpSamTileSaveDir.create(imageData);
+                                CpSamTileSaveDir.clearTempFiles(saveDir);
+                                CpSamTileSaveDir.resetTileIndex();
+                            }
+
+                            // Create processor
+                            Processor<Mat, Mat, NDArray[]> processor = new CpSamTileProcessor(
+                                    predictors, inputChannels, ndManager,
+                                    diameter, (float) cellprobThreshold, (float) flowThreshold, niter, batchSize,
+                                    normalizationDownsample, normalizationMaxDimension,
+                                    normalizationLowPercentile, normalizationHighPercentile,
+                                    saveDir);
+
+                            // Post-processing strategy: output handler (per-tile) + merger (across all tiles).
+                            CpSamPostProcessing postProcessingConfig = new CpSamPostProcessing(preferredOutputType);
+                            OutputHandler<Mat, Mat, NDArray[]> outputHandler = postProcessingConfig.createOutputHandler();
+                            ObjectProcessor postProcessor = postProcessingConfig.createPostProcessor();
+
+                            // Extracts channels from the image data
+                            var imageSupplier = (qupath.lib.experimental.pixels.ImageSupplier<Mat>) params ->
+                                    ImageOps.buildImageDataOp(inputChannels)
+                                            .apply(params.getImageData(), params.getRegionRequest());
+
+                            // Build and run PixelProcessor
+                            var pixelProcessor = PixelProcessor.<Mat, Mat, NDArray[]>builder()
+                                    .processor(processor)
+                                    .imageSupplier(imageSupplier)
+                                    .tiler(tiler)
+                                    .outputHandler(outputHandler)
+                                    .padding(tilingConfig.getFullResPadding(effectiveDownsample))
+                                    .postProcess(postProcessor)
+                                    .downsample(effectiveDownsample)
+                                    .build();
+
+                            pixelProcessor.processObjects(taskRunner, imageData, pathObjects);
+
+                            // Post-detection measurements
+                            if (measureShape || measureIntensity) {
+                                var allDetected = pathObjects.stream()
+                                        .flatMap(p -> p.getChildObjects().stream())
+                                        .toList();
+                                if (!allDetected.isEmpty()) {
+                                    if (measureShape) {
+                                        CpSamMeasurements.addShapeMeasurements(imageData, allDetected);
+                                    }
+                                    if (measureIntensity) {
+                                        CpSamMeasurements.addIntensityMeasurements(imageData, allDetected,
+                                                effectiveDownsample, numPredictors);
+                                    }
+                                    imageData.getHierarchy().fireObjectMeasurementsChangedEvent(null, allDetected);
+                                }
+                            }
+
+                            int nObjects = pathObjects.stream().mapToInt(PathObject::nChildObjects).sum();
+                            int nTiles = ((CpSamTileProcessor) processor).getTilesProcessedCount();
+                            int nFailed = ((CpSamTileProcessor) processor).getTilesFailedCount();
+                            long nPixels = ((CpSamTileProcessor) processor).getPixelsProcessedCount();
+                            boolean interrupted = ((CpSamTileProcessor) processor).wasInterrupted();
+
+                            long totalElapsedMs = System.currentTimeMillis() - startTime;
+                            if (verboseLogging) {
+                                logger.info("CPSAM run finished: tilesProcessed={}, tilesFailed={}, pixelsProcessed={}, outputObjects={}, interrupted={}, elapsedMs={} ({} s)",
+                                        nTiles, nFailed, nPixels, nObjects, interrupted, totalElapsedMs, String.format("%.2f", totalElapsedMs / 1000.0));
+                            }
+
+                            return new CpSamResults(nPixels, nTiles, nFailed, nObjects,
+                                    totalElapsedMs, interrupted);
+                        } catch (Exception ex) {
+                            // If inference failed, evict the predictor cache — CUDA state may be corrupt
+                            logger.warn("CPSAM run failed; evicting predictor cache to force fresh state on next run", ex);
+                            //clearModelCache();
+                            throw ex;
+                        }
+                    }   // end inner scope — predictors remain cached for next run
+                }
+            } catch (Exception e) {
+                logger.error("Error running CPSAM detection", e);
+                return new CpSamResults(0, 0, 0, 0,
+                        System.currentTimeMillis() - startTime, e instanceof InterruptedException);
+            } finally {
+                // The ndManager is guaranteed to be closed at this point.
+                // Safe to force PyTorch to clear its caching allocator.
+                //CpSamUtils.emptyCudaCache();
+                if (verboseLogging) {
+                    CpSamUtils.logVramUsage("after-run");
+                }
+            }
+        }
+    
 }

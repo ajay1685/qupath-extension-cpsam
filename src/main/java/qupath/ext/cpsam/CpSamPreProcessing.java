@@ -9,6 +9,13 @@ import ai.djl.ndarray.types.Shape;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.ColorTransforms;
+
+import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.ArrayList;
 import qupath.ext.djl.DjlTools;
 
 /**
@@ -65,5 +72,24 @@ class CpSamPreProcessing {
                     : manager.zeros(new Shape(1, h, w), DataType.FLOAT32));
         }
         return NDArrays.concat(channelList, 0);
+    }
+
+    /**
+     * Convert a normalised float32 {@link Mat} to the model's expected [1, 3, H, W] BCHW tensor.
+     * <p>
+     * This is a convenience method that creates a temporary {@link NDManager} for the conversion.
+     * The caller is responsible for closing the returned {@link NDArray}.
+     */
+    static List<ColorTransforms.ColorTransform> getInputChannels(ImageData<BufferedImage> imageData) {
+        int total = imageData.getServer().nChannels();
+        int nUsed = Math.min(3, total);
+        if (total > 3) {
+            logger.warn("Image has {} channels — only the first 3 will be used for predictions", total);
+        }
+        List<ColorTransforms.ColorTransform> channels = new ArrayList<>(nUsed);
+        for (int i = 0; i < nUsed; i++) {
+            channels.add(ColorTransforms.createChannelExtractor(i));
+        }
+        return channels;
     }
 }

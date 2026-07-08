@@ -33,16 +33,16 @@ class CpSamUtils {
     static void emptyCudaCache() {
         try {
             Class<?> jniUtils = Class.forName("ai.djl.pytorch.jni.JniUtils");
-            Method m = jniUtils.getDeclaredMethod("emptyCudaCache");
+            Method m = jniUtils.getDeclaredMethod("emptyCache");
             m.setAccessible(true);
             m.invoke(null);
-            logger.info("CUDA allocator cache cleared (torch.cuda.empty_cache())");
+            logger.info("Allocator cache cleared (JniUtils.emptyCache())");
         } catch (ClassNotFoundException e) {
-            logger.debug("PyTorch JNI not on classpath — skipping CUDA cache clear");
+            logger.debug("PyTorch JNI not on classpath — skipping cache clear");
         } catch (NoSuchMethodException e) {
             logger.debug("JniUtils.emptyCache() not found in this DJL version — skipping");
         } catch (Exception e) {
-            logger.debug("Could not clear CUDA allocator cache: {}", e.getMessage());
+            logger.debug("Could not clear allocator cache: {}", e.getMessage());
         }
     }
 
