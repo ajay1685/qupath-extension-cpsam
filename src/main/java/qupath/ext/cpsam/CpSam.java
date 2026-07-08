@@ -248,7 +248,7 @@ public class CpSam {
                 Path saveDir = null;
                 if (CpSamPreferences.savePreprocessedTilesProperty().get()) {
                     try {
-                        // Prefer the QuPath project directory (matches cellpose-temp convention)
+                        // Prefer the QuPath project directory
                         Path baseDir = null;
                         var guiInstance = QuPathGUI.getInstance();
                         var project = guiInstance != null ? guiInstance.getProject() : null;

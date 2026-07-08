@@ -53,9 +53,9 @@ class CpSamPreProcessing {
         long w = chw.getShape().get(2);
 
         if (c > 3) {
-            logger.warn("Image has {} channels — only the first 3 will be sent to the model", c);
+            logger.debug("Image has {} channels — only the first 3 will be sent to the model", c);
         } else {
-            logger.warn("Image has {} channel(s) — zero-padding to 3 channels for the model", c);
+            logger.debug("Image has {} channel(s) — zero-padding to 3 channels for the model", c);
         }
 
         NDList channelList = new NDList(3);
