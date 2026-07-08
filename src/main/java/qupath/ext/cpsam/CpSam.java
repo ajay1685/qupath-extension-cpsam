@@ -138,6 +138,8 @@ public class CpSam {
     private final int normalizationMaxDimension;
     private final double normalizationLowPercentile;
     private final double normalizationHighPercentile;
+    private final boolean measureShape;
+    private final boolean measureIntensity;
 
     private CpSam(Builder builder) {
         this.tileDims = builder.tileDims;
@@ -158,6 +160,8 @@ public class CpSam {
         this.normalizationMaxDimension = builder.normalizationMaxDimension;
         this.normalizationLowPercentile = builder.normalizationLowPercentile;
         this.normalizationHighPercentile = builder.normalizationHighPercentile;
+        this.measureShape = builder.measureShape;
+        this.measureIntensity = builder.measureIntensity;
     }
 
     /**
@@ -306,7 +310,22 @@ public class CpSam {
 
                 pixelProcessor.processObjects(taskRunner, imageData, pathObjects);
 
-                // Release PyTorch's CUDA allocator cache so VRAM is freed before the next run.
+                // Post-detection measurements
+                if (measureShape || measureIntensity) {
+                    var allDetected = pathObjects.stream()
+                            .flatMap(p -> p.getChildObjects().stream())
+                            .toList();
+                    if (!allDetected.isEmpty()) {
+                        if (measureShape) {
+                            CpSamMeasurements.addShapeMeasurements(imageData, allDetected);
+                        }
+                        if (measureIntensity) {
+                            CpSamMeasurements.addIntensityMeasurements(imageData, allDetected,
+                                    effectiveDownsample, numPredictors);
+                        }
+                        imageData.getHierarchy().fireObjectMeasurementsChangedEvent(null, allDetected);
+                    }
+                }
                 //CpSamUtils.emptyCudaCache();
                 if (verboseLogging) {
                     CpSamUtils.logVramUsage("after-run");
@@ -386,6 +405,8 @@ public class CpSam {
         private int normalizationMaxDimension = 2048;
         private double normalizationLowPercentile = 1.0;
         private double normalizationHighPercentile = 99.0;
+        private boolean measureShape = false;
+        private boolean measureIntensity = false;
 
         Builder() {}
 
@@ -542,6 +563,24 @@ public class CpSam {
                 throw new IllegalArgumentException("Percentiles must satisfy 0 <= low < high <= 100, got " + low + ", " + high);
             this.normalizationLowPercentile = low;
             this.normalizationHighPercentile = high;
+            return this;
+        }
+
+        /**
+         * Enable or disable shape measurements after detection.
+         * Shape features include area, length, circularity, solidity, min/max diameter.
+         */
+        public Builder measureShape(boolean measureShape) {
+            this.measureShape = measureShape;
+            return this;
+        }
+
+        /**
+         * Enable or disable per-channel intensity measurements after detection.
+         * Uses the batched API for efficiency on large object sets.
+         */
+        public Builder measureIntensity(boolean measureIntensity) {
+            this.measureIntensity = measureIntensity;
             return this;
         }
 

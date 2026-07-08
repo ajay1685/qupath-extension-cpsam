@@ -84,6 +84,10 @@ public class CpSamInterfaceController extends VBox {
     @FXML
     private Spinner<Double> normHighSpinner;
     @FXML
+    private CheckBox measureShapeCheckBox;
+    @FXML
+    private CheckBox measureIntensityCheckBox;
+    @FXML
     private Button runButton;
     @FXML
     private Label labelMessage;
@@ -209,6 +213,14 @@ public class CpSamInterfaceController extends VBox {
                 .or(pendingTask.isNotNull())
                 .or(Bindings.createBooleanBinding(() -> modelPathBinding.get() == null, modelPathBinding))
         );
+
+        // Measure shape
+        measureShapeCheckBox.selectedProperty().bindBidirectional(
+                CpSamPreferences.measureShapeProperty());
+
+        // Measure intensity
+        measureIntensityCheckBox.selectedProperty().bindBidirectional(
+                CpSamPreferences.measureIntensityProperty());
 
         // Model path label tooltip
         modelPathLabel.setOnMouseClicked(e -> {

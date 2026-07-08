@@ -49,8 +49,11 @@ public class CpSamPreferences {
     private static final DoubleProperty normHighProperty = PathPrefs.createPersistentPreference(
             "cpsam.norm_high", 99.0);
 
-    private static final BooleanProperty makeMeasurementsProperty = PathPrefs.createPersistentPreference(
-            "cpsam.measurements", true);
+    private static final BooleanProperty measureShapeProperty = PathPrefs.createPersistentPreference(
+            "cpsam.measure_shape", false);
+
+    private static final BooleanProperty measureIntensityProperty = PathPrefs.createPersistentPreference(
+            "cpsam.measure_intensity", false);
 
     private static final IntegerProperty numThreadsProperty = PathPrefs.createPersistentPreference(
             "cpsam.num_threads", GeneralTools.clipValue(Runtime.getRuntime().availableProcessors() / 2, 1, 4));
@@ -117,8 +120,12 @@ public class CpSamPreferences {
         return normHighProperty;
     }
 
-    public static BooleanProperty makeMeasurementsProperty() {
-        return makeMeasurementsProperty;
+    public static BooleanProperty measureShapeProperty() {
+        return measureShapeProperty;
+    }
+
+    public static BooleanProperty measureIntensityProperty() {
+        return measureIntensityProperty;
     }
 
     public static IntegerProperty numThreadsProperty() {

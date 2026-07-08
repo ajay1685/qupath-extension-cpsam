@@ -241,6 +241,20 @@
                                         <tooltip><Tooltip text="Output object type" /></tooltip>
                                     </ComboBox>
                                 </HBox>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Measure shape">
+                                        <tooltip><Tooltip text="Add shape measurements (area, length, circularity, etc.) to detected objects" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <CheckBox fx:id="measureShapeCheckBox" styleClass="regular" />
+                                </HBox>
+                                <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                                    <Label styleClass="regular" text="Measure intensity">
+                                        <tooltip><Tooltip text="Add per-channel intensity measurements to detected objects" /></tooltip>
+                                    </Label>
+                                    <Pane minWidth="5" HBox.hgrow="ALWAYS" />
+                                    <CheckBox fx:id="measureIntensityCheckBox" styleClass="regular" />
+                                </HBox>
                             </children>
                         </VBox>
 

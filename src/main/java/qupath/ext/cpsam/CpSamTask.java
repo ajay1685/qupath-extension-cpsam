@@ -74,6 +74,8 @@ public class CpSamTask extends Task<Void> {
         int nThreads = CpSamPreferences.numThreadsProperty().get();
         double normLow = CpSamPreferences.normLowProperty().get();
         double normHigh = CpSamPreferences.normHighProperty().get();
+        boolean measureShape = CpSamPreferences.measureShapeProperty().get();
+        boolean measureIntensity = CpSamPreferences.measureIntensityProperty().get();
         var taskRunner = new TaskRunnerFX(QuPathGUI.getInstance(), nThreads);
 
         var selectedObjects = imageData.getHierarchy().getSelectionModel().getSelectedObjects();
@@ -99,6 +101,8 @@ public class CpSamTask extends Task<Void> {
                     .interTilePadding(tilePadding)
                     .inputChannels(buildChannelTransforms())
                     .normalizationPercentiles(normLow, normHigh)
+                    .measureShape(measureShape)
+                    .measureIntensity(measureIntensity)
                     .taskRunner(taskRunner)
                     .preferredOutputType(preferredOutputType)
                     .build()
@@ -136,6 +140,8 @@ public class CpSamTask extends Task<Void> {
                                     .tileDims(%d)
                                     .interTilePadding(%d)%s
                                     .normalizationPercentiles(%.1f, %.1f)
+                                    .measureShape(%b)
+                                    .measureIntensity(%b)
                                     .outputDetections()
                                     .build()
                                     .detectObjects()
@@ -143,7 +149,7 @@ public class CpSamTask extends Task<Void> {
                                 modelPathStr.replace("\\", "/"),
                                 device, diameter, cellprobThreshold, flowThreshold,
                                 niter, batchSize, nThreads, tileSize, tilePadding,
-                                channelLine, normLow, normHigh
+                                channelLine, normLow, normHigh, measureShape, measureIntensity
                         ).strip()
                 )));
 
