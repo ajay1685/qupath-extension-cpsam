@@ -329,9 +329,9 @@ public class CpSam {
             return this;
         }
 
-        public Builder outputCells() {
-            return preferredOutputType(PathCellObject.class);
-        }
+        //public Builder outputCells() {
+            //return preferredOutputType(PathCellObject.class);
+        //}
 
         public Builder outputDetections() {
             return preferredOutputType(PathDetectionObject.class);
@@ -475,9 +475,9 @@ public class CpSam {
                             // Create tile save directory if requested (preference enabled at run start).
                             Path saveDir = null;
                             if (CpSamPreferences.savePreprocessedTilesProperty().get()) {
-                                saveDir = CpSamTileSaveDir.create(imageData);
-                                CpSamTileSaveDir.clearTempFiles(saveDir);
-                                CpSamTileSaveDir.resetTileIndex();
+                                saveDir = CpSamSaveUtils.create(imageData);
+                                CpSamSaveUtils.clearTempFiles(saveDir);
+                                CpSamSaveUtils.resetTileIndex();
                             }
 
                             // Create processor

@@ -32,14 +32,14 @@ import org.bytedeco.opencv.opencv_core.Mat;
  * </ol>
  * The actual path is {@code <base>/cpsam-temp/<timestamp>}.
  */
-class CpSamTileSaveDir {
+class CpSamSaveUtils {
 
-    private static final Logger logger = LoggerFactory.getLogger(CpSamTileSaveDir.class);
+    private static final Logger logger = LoggerFactory.getLogger(CpSamSaveUtils.class);
     private static final String FOLDER_NAME = "cpsam-temp";
 
     private static final AtomicInteger saveTileIndex = new AtomicInteger(0);
 
-    private CpSamTileSaveDir() {}
+    private CpSamSaveUtils() {}
 
     /**
      * Create and return the tile save directory, or {@code null} if creation fails.

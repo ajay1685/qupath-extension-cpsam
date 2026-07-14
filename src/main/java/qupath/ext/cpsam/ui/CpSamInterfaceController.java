@@ -197,7 +197,7 @@ public class CpSamInterfaceController extends VBox {
         tilePaddingChoiceBox.valueProperty().addListener((v, o, n) -> CpSamPreferences.tilePaddingProperty().set(n));
 
         // Output type
-        comboOutputType.getItems().addAll("Detections", "Annotations", "Cells");
+        comboOutputType.getItems().addAll("Detections", "Annotations");//, "Cells");
         comboOutputType.getSelectionModel().select(0);
 
         // Save device selection whenever it changes (population done in updateDeviceChoices)
@@ -389,14 +389,14 @@ public class CpSamInterfaceController extends VBox {
         }
 
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select CPSAM TorchScript model");
+        chooser.setTitle("Select torchScript wrapper for cpdino or cpsam");
         chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("TorchScript model", "*.pt")
+            new FileChooser.ExtensionFilter("TorchScript Wrapper", "*.ts")
         );
         if (initialDir != null) {
             chooser.setInitialDirectory(initialDir);
         }
-        chooser.setInitialFileName("cpsam_torchscript.pt");
+        // chooser.setInitialFileName("cpsam_torchscript.pt");
 
         File file = chooser.showOpenDialog(modelPathLabel.getScene().getWindow());
         if (file != null) {
@@ -456,7 +456,7 @@ public class CpSamInterfaceController extends VBox {
         // Create output type mapping
         Class<? extends qupath.lib.objects.PathObject> outputClass = switch (comboOutputType.getSelectionModel().getSelectedItem()) {
             case "Annotations" -> qupath.lib.objects.PathAnnotationObject.class;
-            case "Cells" -> qupath.lib.objects.PathCellObject.class;
+            //case "Cells" -> qupath.lib.objects.PathCellObject.class;
             default -> qupath.lib.objects.PathDetectionObject.class;
         };
 

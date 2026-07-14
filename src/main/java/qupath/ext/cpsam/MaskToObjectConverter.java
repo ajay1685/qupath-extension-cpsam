@@ -67,8 +67,8 @@ class MaskToObjectConverter implements OutputHandler.OutputToObjectConverter<Mat
                 ann.setLocked(true);
             }
             return obj;
-        } else if (Objects.equals(PathCellObject.class, preferredType)) {
-            return PathObjects.createCellObject(roi, roi);
+        //} else if (Objects.equals(PathCellObject.class, preferredType)) {
+            //return PathObjects.createCellObject(roi, roi);
         } else {
             return PathObjects.createDetectionObject(roi);
         }

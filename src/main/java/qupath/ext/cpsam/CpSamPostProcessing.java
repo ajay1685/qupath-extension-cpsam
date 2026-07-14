@@ -116,7 +116,7 @@ class CpSamPostProcessing {
     private String outputTypeName() {
         if (preferredOutputType == null || preferredOutputType == PathDetectionObject.class) return "detection";
         if (preferredOutputType == PathAnnotationObject.class) return "annotation";
-        if (preferredOutputType == PathCellObject.class) return "cell";
+        //if (preferredOutputType == PathCellObject.class) return "cell";
         return preferredOutputType.getSimpleName();
     }
 }

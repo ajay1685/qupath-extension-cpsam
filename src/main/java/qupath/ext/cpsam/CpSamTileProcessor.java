@@ -138,7 +138,7 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
         // Save the normalized tile image before inference if requested (for preprocessing diagnostics).
         if (saveDir != null) {
             //saveTile(mat, params.getRegionRequest());
-            CpSamTileSaveDir.savePreprocessedTile(mat, params.getRegionRequest(), saveDir);
+            CpSamSaveUtils.savePreprocessedTile(mat, params.getRegionRequest(), saveDir);
         }
 
         // Log baseline VRAM once, before the very first inference call of this run.
