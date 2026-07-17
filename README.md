@@ -168,7 +168,7 @@ This extension was inspired by and builds upon the work of several open-source p
 - QuPath-Extension-SpotiFlow
 - Several interesting discussions in the image.sc forum.
 
-### Disclamer
+### Disclaimer
 - Several large language models (both open and proprietary weights) were used in the development and implementation of various features for this extension, with human (me) in the loop. So if you spot AI slop please let me know.
 
 ---
