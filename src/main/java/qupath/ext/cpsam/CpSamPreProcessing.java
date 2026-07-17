@@ -75,10 +75,11 @@ class CpSamPreProcessing {
     }
 
     /**
-     * Convert a normalised float32 {@link Mat} to the model's expected [1, 3, H, W] BCHW tensor.
+     * Get default input channels for the given image data.
      * <p>
-     * This is a convenience method that creates a temporary {@link NDManager} for the conversion.
-     * The caller is responsible for closing the returned {@link NDArray}.
+     * Uses name-based channel extraction (consistent with InstanSeg pattern)
+     * rather than integer-indexed extraction, which can be unreliable on
+     * re-ordered images (e.g., RGBA → BGRA).
      */
     static List<ColorTransforms.ColorTransform> getInputChannels(ImageData<BufferedImage> imageData) {
         int total = imageData.getServer().nChannels();
@@ -87,8 +88,10 @@ class CpSamPreProcessing {
             logger.warn("Image has {} channels — only the first 3 will be used for predictions", total);
         }
         List<ColorTransforms.ColorTransform> channels = new ArrayList<>(nUsed);
+        var metadata = imageData.getServer().getMetadata();
         for (int i = 0; i < nUsed; i++) {
-            channels.add(ColorTransforms.createChannelExtractor(i));
+            var channel = metadata.getChannels().get(i);
+            channels.add(ColorTransforms.createChannelExtractor(channel.getName()));
         }
         return channels;
     }

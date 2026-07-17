@@ -34,12 +34,12 @@ public class CpSamTask extends Task<Void> {
     private final int tileSize;
     private final int tilePadding;
     private final Class<? extends PathObject> preferredOutputType;
-    private final List<String> channelNames;
+    private final List<CpSamChannelItem> channelItems;
 
     public CpSamTask(ImageData<BufferedImage> imageData, String modelPathStr,
               String device, double diameter, float cellprobThreshold, float flowThreshold,
               int niter, int batchSize, int tileSize, int tilePadding,
-              Class<? extends PathObject> preferredOutputType, List<String> channelNames) {
+              Class<? extends PathObject> preferredOutputType, List<CpSamChannelItem> channelItems) {
         this.imageData = imageData;
         this.modelPathStr = modelPathStr;
         this.device = device;
@@ -51,19 +51,20 @@ public class CpSamTask extends Task<Void> {
         this.tileSize = tileSize;
         this.tilePadding = tilePadding;
         this.preferredOutputType = preferredOutputType;
-        this.channelNames = List.copyOf(channelNames);
+        this.channelItems = List.copyOf(channelItems);
     }
 
+    /**
+     * Build ColorTransform objects from the selected channel items.
+     * Handles both raw channels and color deconvolution channels.
+     */
     private List<ColorTransforms.ColorTransform> buildChannelTransforms() {
-        if (channelNames.isEmpty()) return List.of();
-        var allNames = imageData.getServer().getMetadata().getChannels().stream()
-                .map(ch -> ch.getName())
-                .toList();
+        if (channelItems.isEmpty()) return List.of();
         var transforms = new ArrayList<ColorTransforms.ColorTransform>();
-        for (String name : channelNames) {
-            int idx = allNames.indexOf(name);
-            if (idx >= 0) {
-                transforms.add(ColorTransforms.createChannelExtractor(idx));
+        for (CpSamChannelItem item : channelItems) {
+            var transform = item.getTransform();
+            if (transform != null) {
+                transforms.add(transform);
             }
         }
         return transforms;
@@ -115,12 +116,18 @@ public class CpSamTask extends Task<Void> {
 
         imageData.getHierarchy().fireHierarchyChangedEvent(this);
         String channelLine;
-        if (channelNames.isEmpty()) {
+        if (channelItems.isEmpty()) {
             channelLine = "";
         } else {
             channelLine = "\n    .inputChannels(java.util.List.of(" +
-                    channelNames.stream()
-                            .map(n -> "qupath.lib.images.servers.ColorTransforms.createChannelExtractor(" + (char) 34 + n + (char) 34 + ")")
+                    channelItems.stream()
+                            .map(item -> {
+                                if (item.getStainNumber() > 0) {
+                                    return String.format("qupath.lib.images.servers.ColorTransforms.createColorDeconvolvedChannel(getCurrentImageData().getColorDeconvolutionStains(), %d)", item.getStainNumber());
+                                } else {
+                                    return String.format("qupath.lib.images.servers.ColorTransforms.createChannelExtractor(%d)", item.getIndex());
+                                }
+                            })
                             .collect(Collectors.joining(", ")) +
                     "))";
         }

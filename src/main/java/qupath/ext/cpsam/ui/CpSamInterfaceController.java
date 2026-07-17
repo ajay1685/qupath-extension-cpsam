@@ -23,6 +23,7 @@ import org.controlsfx.control.CheckComboBox;
 import org.controlsfx.control.SearchableComboBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.ext.cpsam.CpSamChannelItem;
 import qupath.ext.cpsam.CpSamPreferences;
 import qupath.ext.djl.DjlTools;
 import qupath.ext.cpsam.CpSamTask;
@@ -92,13 +93,11 @@ public class CpSamInterfaceController extends VBox {
     @FXML
     private Label labelMessage;
     @FXML
-    private ComboBox<String> channelCombo1;
+    private ComboBox<CpSamChannelItem> channelCombo1;
     @FXML
-    private ComboBox<String> channelCombo2;
+    private ComboBox<CpSamChannelItem> channelCombo2;
     @FXML
-    private ComboBox<String> channelCombo3;
-
-    private static final String CHANNEL_NONE = "(None)";
+    private ComboBox<CpSamChannelItem> channelCombo3;
 
     private final ExecutorService pool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam", true));
     private final QuPathGUI qupath;
@@ -315,9 +314,9 @@ public class CpSamInterfaceController extends VBox {
 
     private void updateChannelCombos(ImageData<BufferedImage> imageData) {
         // Save current selections before clearing
-        String prev1 = channelCombo1.getValue();
-        String prev2 = channelCombo2.getValue();
-        String prev3 = channelCombo3.getValue();
+        CpSamChannelItem prev1 = channelCombo1.getValue();
+        CpSamChannelItem prev2 = channelCombo2.getValue();
+        CpSamChannelItem prev3 = channelCombo3.getValue();
 
         channelCombo1.getItems().clear();
         channelCombo2.getItems().clear();
@@ -330,12 +329,7 @@ public class CpSamInterfaceController extends VBox {
             return;
         }
 
-        List<String> names = new ArrayList<>();
-        for (var ch : imageData.getServer().getMetadata().getChannels()) {
-            names.add(ch.getName());
-        }
-
-        if (names.isEmpty()) {
+        if (imageData.getServer().nChannels() == 0) {
             channelCombo1.setDisable(true);
             channelCombo2.setDisable(true);
             channelCombo3.setDisable(true);
@@ -346,31 +340,73 @@ public class CpSamInterfaceController extends VBox {
         channelCombo2.setDisable(false);
         channelCombo3.setDisable(false);
 
+        // Get available channels (raw + deconvolution)
+        List<CpSamChannelItem> allChannels = CpSamChannelItem.getAvailableChannels(imageData);
+        List<CpSamChannelItem> noneItems = CpSamChannelItem.getNoneItems();
+
         // Channel 1: required — no None option
-        channelCombo1.getItems().addAll(names);
+        channelCombo1.getItems().addAll(allChannels);
         // Channels 2 & 3: optional — (None) means zero-pad that slot
-        channelCombo2.getItems().add(CHANNEL_NONE);
-        channelCombo2.getItems().addAll(names);
-        channelCombo3.getItems().add(CHANNEL_NONE);
-        channelCombo3.getItems().addAll(names);
+        channelCombo2.getItems().addAll(noneItems);
+        channelCombo2.getItems().addAll(allChannels);
+        channelCombo3.getItems().addAll(noneItems);
+        channelCombo3.getItems().addAll(allChannels);
 
         // Restore previous selection if still valid, else use a sensible default
-        channelCombo1.setValue(names.contains(prev1) ? prev1 : names.get(0));
-        channelCombo2.setValue(CHANNEL_NONE.equals(prev2) || names.contains(prev2)
-                ? prev2 : (names.size() >= 2 ? names.get(1) : CHANNEL_NONE));
-        channelCombo3.setValue(CHANNEL_NONE.equals(prev3) || names.contains(prev3)
-                ? prev3 : (names.size() >= 3 ? names.get(2) : CHANNEL_NONE));
+        channelCombo1.setValue(restoreOrDefault(prev1, allChannels, 0));
+        channelCombo2.setValue(restoreOrDefaultOptional(prev2, allChannels, noneItems.get(0)));
+        channelCombo3.setValue(restoreOrDefaultOptional(prev3, allChannels, noneItems.get(0)));
+
+        // Disable channel 3 when channel 2 is (None) — no point selecting a third channel if the second is zero-padded
+        channelCombo2.valueProperty().addListener((obs, oldVal, newVal) -> {
+            channelCombo3.setDisable(newVal != null && newVal.isNone());
+            if (newVal != null && newVal.isNone()) {
+                channelCombo3.setValue(null);
+            }
+        });
     }
 
     /**
-     * Returns the ordered list of non-(None) channel names from the three channel combos.
+     * Restore a previous selection if it's still in the available list, otherwise return the item at the given index.
+     */
+    private CpSamChannelItem restoreOrDefault(CpSamChannelItem prev, List<CpSamChannelItem> available, int defaultIndex) {
+        if (prev != null && available.contains(prev)) {
+            return prev;
+        }
+        return available.get(Math.min(defaultIndex, available.size() - 1));
+    }
+
+    /**
+     * Restore a previous selection for optional channel combos.
+     * Accepts the value if it's in either the available channels or is a None item.
+     */
+    private CpSamChannelItem restoreOrDefaultOptional(CpSamChannelItem prev, List<CpSamChannelItem> allChannels, CpSamChannelItem noneDefault) {
+        if (prev != null) {
+            // Check if it's a valid channel
+            if (allChannels.contains(prev)) {
+                return prev;
+            }
+            // Check if it's a None item (match by isNone flag since different instances won't be equal)
+            if (prev.isNone()) {
+                return noneDefault;
+            }
+        }
+        // Default: second channel if available, otherwise None
+        if (allChannels.size() >= 2) {
+            return allChannels.get(1);
+        }
+        return noneDefault;
+    }
+
+    /**
+     * Returns the ordered list of selected channel items from the three channel combos.
      * Trailing (None) selections stop collection; CpSamPreProcessing.enforceThreeChannels() will zero-pad those slots.
      */
-    private List<String> getSelectedChannelNames() {
-        List<String> result = new ArrayList<>(3);
+    private List<CpSamChannelItem> getSelectedChannels() {
+        List<CpSamChannelItem> result = new ArrayList<>(3);
         for (var combo : List.of(channelCombo1, channelCombo2, channelCombo3)) {
-            String val = combo.getValue();
-            if (val == null || CHANNEL_NONE.equals(val)) break;
+            CpSamChannelItem val = combo.getValue();
+            if (val == null || val.isNone()) break;
             result.add(val);
         }
         return result;
@@ -461,7 +497,7 @@ public class CpSamInterfaceController extends VBox {
         };
 
         // Create and schedule task
-        List<String> channelNames = getSelectedChannelNames();
+        List<CpSamChannelItem> selectedChannels = getSelectedChannels();
         var task = new CpSamTask(
                 imageData,
                 modelPath.toString(),
@@ -474,7 +510,7 @@ public class CpSamInterfaceController extends VBox {
                 tileSize,
                 tilePadding,
                 outputClass,
-                channelNames
+                selectedChannels
         );
 
         // Attach state listener

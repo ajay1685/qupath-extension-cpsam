@@ -4,10 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.analysis.features.ObjectMeasurements;
 import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.TransformedServerBuilder;
 import qupath.lib.objects.PathObject;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -118,6 +120,9 @@ class CpSamMeasurements {
      * All {@link ObjectMeasurements.Measurements} (mean, median, min, max, std-dev) and all
      * {@link ObjectMeasurements.Compartments} (nucleus, cytoplasm, cell, membrane) are measured.
      * Compartments are silently ignored for non-cell objects.
+     * <p>
+     * If color deconvolution stains are available in the image, the measurement server is
+     * transformed to use all non-residual deconvolution channels.
      *
      * @param imageData  the image to read pixel values from
      * @param objects    the detected objects to measure
@@ -134,16 +139,37 @@ class CpSamMeasurements {
         int threads = Math.max(1, nThreads);
         logger.debug("Adding intensity measurements to {} objects using {} thread(s) at downsample={}",
                 objects.size(), threads, downsample);
-        // ExecutorService.close() (Java 19+) calls shutdown() + awaitTermination(), so the
-        // try-with-resources block does not return until all submitted batches have completed.
-        try (var pool = Executors.newFixedThreadPool(threads)) {
-            ObjectMeasurements.addIntensityMeasurements(
-                    server,
-                    objects,
-                    downsample,
-                    ObjectMeasurements.ALL_MEASUREMENTS,
-                    ObjectMeasurements.ALL_COMPARTMENTS, //Set.of(ObjectMeasurements.Compartments.CELL),
-                    pool);
+
+        // Apply color deconvolution to measurement server if stains are available
+        var stains = imageData.getColorDeconvolutionStains();
+        var builder = new TransformedServerBuilder(server);
+        if (stains != null) {
+            List<Integer> stainNumbers = new ArrayList<>();
+            for (int s = 1; s <= 3; s++) {
+                if (!stains.getStain(s).isResidual())
+                    stainNumbers.add(s);
+            }
+            if (!stainNumbers.isEmpty()) {
+                builder.deconvolveStains(stains, stainNumbers.stream().mapToInt(i -> i).toArray());
+            }
+        }
+
+        try {
+            var server2 = builder.build();
+            try (var pool = Executors.newFixedThreadPool(threads)) {
+                ObjectMeasurements.addIntensityMeasurements(
+                        server2,
+                        objects,
+                        downsample,
+                        ObjectMeasurements.ALL_MEASUREMENTS,
+                        ObjectMeasurements.ALL_COMPARTMENTS,
+                        pool);
+            }
+            // server2 is closed here if it's different from server
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Failed to measure intensity: " + e.getMessage(), e);
         }
         logger.debug("Intensity measurements complete for {} objects", objects.size());
     }
