@@ -2,6 +2,10 @@
 
 A QuPath extension for running TorchScript-based Cellpose-SAM models (CPSAM and CPDINO) for cell segmentation in brightfiled and fluorescence images including whole slide images.
 
+## Screenshot
+
+![Preview](assets/Screenshot-0.PNG)
+
 ## Torchscript Models
 
 | Model | Backbone | Devices | Torchscript variants
@@ -31,7 +35,7 @@ Simple install method coming soon...
    cd qupath-extension-cpsam
    gradlew build
    ```
-2. Copy `build/libs/qupath-extension-cpsam-*.jar` to your QuPath plugins directory
+2. Copy `build/libs/qupath-extension-cpsam-*.jar` to your QuPath extension directory, drag it on the QuPath UI.
 
 
 ## Usage
