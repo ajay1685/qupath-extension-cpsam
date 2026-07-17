@@ -17,8 +17,10 @@ A QuPath extension for running TorchScript-based Cellpose-SAM models (CPSAM and 
 | **CPDINO (VIT-B)** | DINOv3 (vitb) | CUDA | cpdino_vitb_wrapper_cuda.ts | Float32
 |                    |               | CPU | cpdino_vitb_wrapper_cpu.ts | Float32
 
-> [!WARNING]
+> [!IMPORTANT]
 > - Inference is only available for 2D image data, no support for 3D datasets is available or planned.
+
+
 
 ## Prerequisites
 
@@ -115,15 +117,24 @@ Please refer to Cellpose documentation for additional information regarding norm
 - set **Flow threshold** to zero (return as much as possible) or higher value to return more detections.
 - Check the selected input channels, and test your images with **cellpose v4.x** python install. 
 
-## Model Licensing
+> [!TIP]
+> Refer to Cellpose documentation, verify everything work with Cellpose python install first.
+
+## Model Licensing Terms
+
+> [!CAUTION]
+> Please consider doing your own research regarding applicable licenses.
 
 The TorchScript models loaded by this extension are derived from the [Cellpose-SAM project](https://github.com/mouseland/cellpose-sam). Model weights were trained on datasets with various licensing terms. Users are responsible for ensuring their use complies with the original model licenses and training data terms of service.
 
 For license details please refer to Cellpose repository: https://github.com/mouseland/cellpose
 
-## Java Code License
+> [!TIP]
+> Interesting discussion regarding this topic: https://forum.image.sc/t/question-about-cellpose-sam-pretrained-model-licensing-in-commercial-bioimage-software/121128
 
-The Java extension code in this repository is licensed under the same terms as QuPath (GPL Version 3).
+## License for QuPath-Extension-CPSAM
+
+The extension code in this repository is licensed under the same terms as QuPath (GPL Version 3).
 
 ## Getting Help
 
@@ -162,7 +173,7 @@ This extension was inspired by and builds upon the work of several open-source p
 
 ---
 
-> [!WARNING]
+> [!NOTE]
 > - Eventhough scripting works (kind of), I have not tested this extension in headless QuPath.
 
 
