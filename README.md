@@ -2,11 +2,11 @@
 
 A QuPath extension for running TorchScript-based Cellpose-SAM models (CPSAM and CPDINO) for cell segmentation in brightfiled and fluorescence images including whole slide images.
 
-## Supported Models
+## Torchscript Models
 
-| Model | Backbone | Devices | Variants
+| Model | Backbone | Devices | Torchscript variants
 |-------|----------|---------|---------
-| **CPSAM** | SAM ViT-L | CPU, CUDA | cpsam and cpsam_v2
+| **CPSAM** | SAM ViT-L | Device agnostic | cpsam and cpsam_v2
 | **CPDINO** | Facebook DINOv3 (vitl/vitb) | Separate models for CPU and GPU | cpdino-vitl and cpdino-vitb 
 
 > [!WARNING]
@@ -21,19 +21,27 @@ A QuPath extension for running TorchScript-based Cellpose-SAM models (CPSAM and 
 
 ## Installation
 
+### Installation via QuPath's extension manager.
+Simple install method coming soon...
+
+### Manual install
+
 1. Build the extension:
    ```bash
    cd qupath-extension-cpsam
    gradlew build
    ```
-2. Copy `build/libs/qupath-extension-cpsam-*.jar` to your QuPath plugins directory, or install via QuPath's extension manager (coming soon).
+2. Copy `build/libs/qupath-extension-cpsam-*.jar` to your QuPath plugins directory
+
 
 ## Usage
-
+### QuPath
 1. Open an image in QuPath (brightfield or fluorescence)
 2. Create and/or select one or more _Annotation_ to process
 3. Launch the extension: _Extensions → CPSAM → Run CPSAM_
-4. Configure parameters in the dialog:
+
+### CPSAM Parameters
+Configure parameters in the dialog:
    - **Model path**: Select a `.ts` TorchScript wrapper file
    - **Device**: CPU, CUDA (for nvidia GPUs) or MPS. Apple Silicon support pending... contributions are welcome.
    - **Diameter**: Expected cell diameter in pixel units
