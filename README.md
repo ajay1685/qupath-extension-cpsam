@@ -127,7 +127,7 @@ Please refer to Cellpose documentation for additional information regarding norm
 
 The TorchScript models loaded by this extension are derived from the [Cellpose v4.x](https://github.com/mouseland/cellpose-sam). The cellpose models were trained on datasets with varying licensing terms. Users are responsible for ensuring their use complies with the original licenses and terms of the cellpose model weights (cpsam, cpsam_v2, cpdino, cpdino-vitb) from cellpose.
 
-For license details please refer to Cellpose repository: https://github.com/mouseland/cellpose
+For license details please refer to Cellpose repository: [MouseLand/Cellpose](https://github.com/mouseland/cellpose)
 
 > [!TIP]
 > Interesting discussion regarding this topic: https://forum.image.sc/t/question-about-cellpose-sam-pretrained-model-licensing-in-commercial-bioimage-software/121128
