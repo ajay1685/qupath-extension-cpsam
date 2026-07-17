@@ -42,28 +42,28 @@ Simple install method coming soon...
 
 ### CPSAM Parameters
 Configure parameters in the dialog:
-   - **Model path**: Select a `.ts` TorchScript wrapper file
-   - **Device**: CPU, CUDA (for nvidia GPUs) or MPS. Apple Silicon support pending... contributions are welcome.
+   - **Model path**: Select a `.ts` TorchScript model file
+   - **Device**: Select cpu, cuda (for nvidia GPUs) or mps (Apple Silicon). Apple silicon support pending...
    - **Diameter**: Expected cell diameter in pixel units
    - **Cell Probability**: Cell probability threshold between -5.0 and 5.0, defaults to 0.0 (refer to cellpose documentation for explaination).
-   - **Flow Threshold**: Flow error threshold (defaults to 0.4), when set to 0 no cells are discarded. Increase flow error threshold to detect more cells (refer to cellpose documentation for explaination).
-   - **Tile size / padding**: Controls tiling for large images
+   - **Flow Threshold**: Flow error threshold (defaults to 0.4), when set to 0 no cells are discarded. Increase flow error threshold to detect more cells (refer to cellpose documentation for explaination). Set to 0 to disable quality check and return all possible detections.
+   - **Tile size / padding**: Controls tiling for large (i.e. whole slide) images.
    - **Batch size**: Increase or descrese batch size based on available GPU VRAM. 
-   - **Threads**: Number of parallel threads. Only use if you have enough cpu, gpu and ram available.
+   - **Threads**: Number of parallel threads. Increase number of threads when you have enough cpu, gpu and ram available.
 
 ### Channel Selection
 
 The extension supports selecting 1–3 input channels from:
 
-- **Raw image channels** — direct channel extraction by name
-- **Color deconvolution channels** — Hematoxylin, DAB, or other stains for brightfield images.
-- **(None)** — Channel 1 is required. Channels 2 and 3 are optional. When only one or two channels are selected, we zero-pads the other channels to force 3 channel input expected by the model.
+- **Raw image channels**: direct channel extraction by name
+- **Color deconvolution channels**: Hematoxylin, Eosin, DAB, or other stains for brightfield images. Refer to QuPath's documentation for color deconvolution and seperating stains: https://qupath.readthedocs.io/en/stable/docs/tutorials/separating_stains.html#separating-stains 
+- **(None)**: Channel 1 is required. Channels 2 and 3 are optional. When only one or two channels are selected, we zero-pads the other channels to force 3 channel input expected by the model.
 
 ### Post-Processing
 
 Shape and intensity feature can be calculated on the fly:
 
-- **Measurements** — optional shape and intensity measurements on detected objects. New ObjectMeasurements api introduced in QuPath version 0.8.0 makes the intensity measurements faster.
+- **Measurements**: Perform shape and intensity measurements on detected objects. New ObjectMeasurements api introduced in QuPath version 0.8.0 makes the intensity measurements faster.
 - On the fly measurements will not work on QuPath version 0.7.0 or below, use _Analyze → Calculate Features → Add shape features and Add intensity features_ for measurements.
 
 > [!WARNING]
@@ -94,9 +94,9 @@ Please refer to Cellpose documentation for additional information regarding norm
 
 ### Model
 
-- Ensure the `.ts` file is a valid TorchScript wrapper (not a raw `.pt` checkpoint). Instructions to obtain these models are coming soon...
+- Ensure the `.ts` file is a valid TorchScript model (not a raw `.pt` checkpoint). Instructions to obtain these models are coming soon...
 - CPSAM torchscript wrapper is device agnostic (same model works for cpu or cuda) use cpsam_wrapper or cpsam_v2_wrapper.
-- CPDINO models are device dependent; use the correct model type and device selection (i.e. cpdino_vitl_cuda, cpdino_vitl_cpu, cpdino_vitb_cuda or cpdino_vitb_cpu).
+- CPDINO models are device dependent; use the correct model type and device selection (i.e. cpdino_vitl_wrapper_cuda, cpdino_vitl_wrapper_cpu, cpdino_vitb_wrapper_cuda or cpdino_vitb_wrapper_cpu).
 - Verify PyTorch engine is installed: _Extensions → Deep Java Library → Manage DJL Engines_
 - Verify that the PyTorch engine can use CUDA if applicable, refer to https://qupath.readthedocs.io/en/stable/docs/deep/gpu.html#checking-everything-works 
 
@@ -148,10 +148,14 @@ This extension was inspired by and builds upon the work of several open-source p
 - QuPath-Extension-WSIInfer
 - QuPath-Extension-SpotiFlow
 - Several interesting discussions in the image.sc forum.
+
+### Disclamer
+- Several large language models (both open and proprietary weights) were used in the development and implementation of various features for this extension, with human (me) in the loop. So if you spot AI slop please let me know.
+
 ---
 
 > [!WARNING]
-> - Currently, the cellpose-extension hasn't been tested on HPC clusters.
+> - Eventhough scripting works (kind of), I have not tested this extension in headless QuPath.
 
 
 ## Important Notes:
