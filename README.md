@@ -8,10 +8,14 @@ A QuPath extension for running TorchScript-based Cellpose-SAM models (CPSAM and 
 
 ## Torchscript Models
 
-| Model | Backbone | Devices | Torchscript variants
-|-------|----------|---------|---------
-| **CPSAM** | SAM ViT-L | Device agnostic | cpsam and cpsam_v2
-| **CPDINO** | Facebook DINOv3 (vitl/vitb) | Separate models for CPU and GPU | cpdino-vitl and cpdino-vitb 
+| Source Model Weights | Backbone | Devices | Torchscript variants | Data type
+|-------|----------|---------|---------|---------
+| **CPSAM** | SAM ViT-L | Device agnostic | cpsam_wrapper.ts | Float32
+| **CPSAM_V2** | SAM ViT-L | Device agnostic | cpsam_v2_wrapper.ts | Float32
+| **CPDINO (VIT-L)** | DINOv3 (vitl) | CUDA | cpdino_vitl_wrapper_cuda.ts | Float32
+|                    |               | CPU |  cpdino_vitl_wrapper_cpu.ts | Float32
+| **CPDINO (VIT-B)** | DINOv3 (vitb) | CUDA | cpdino_vitb_wrapper_cuda.ts | Float32
+|                    |               | CPU | cpdino_vitb_wrapper_cpu.ts | Float32
 
 > [!WARNING]
 > - Inference is only available for 2D image data, no support for 3D datasets is available or planned.
