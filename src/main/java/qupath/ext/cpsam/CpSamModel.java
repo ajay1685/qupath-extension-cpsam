@@ -17,7 +17,7 @@ import java.util.Optional;
 public class CpSamModel {
 
     private static final Logger logger = LoggerFactory.getLogger(CpSamModel.class);
-    private static final String MODEL_FILENAME = "cpsam_torchscript.pt";
+    private static final String MODEL_FILENAME = "torchscript.ts";
     private static final double DEFAULT_REQUESTED_PIXEL_SIZE = 1.0;
 
     private final Path path;
@@ -30,8 +30,8 @@ public class CpSamModel {
 
     /**
      * Create a CpSamModel from a path on disk.
-     * The path may point to either a directory containing cpsam_torchscript.pt
-     * or directly to the .pt file.
+     * The path may point to either a directory containing the torchscript wrapper
+     * or directly to the .ts file.
      *
      * @param path path on disk
      * @return a new CpSamModel instance

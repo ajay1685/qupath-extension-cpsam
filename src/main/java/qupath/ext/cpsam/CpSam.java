@@ -82,6 +82,7 @@ public class CpSam {
                     .setTypes(NDList.class, NDList.class)
                     .optModelUrls(modelPath.toUri().toString())
                     .optProgress(new ProgressBar())
+                    //.optOption("mapLocation", "true")
                     .optDevice(Device.fromName(device))
                     .build();
             cachedModel = criteria.loadModel();
@@ -229,7 +230,7 @@ public class CpSam {
         private CpSamModel model;
         private List<ColorTransforms.ColorTransform> channels = null;
         private double normalizationDownsample = Double.NaN; // NaN → derived from normalizationMaxDimension
-        private int normalizationMaxDimension = 2048;
+        private int normalizationMaxDimension = 4096;
         private double normalizationLowPercentile = 1.0;
         private double normalizationHighPercentile = 99.0;
         private boolean measureShape = false;

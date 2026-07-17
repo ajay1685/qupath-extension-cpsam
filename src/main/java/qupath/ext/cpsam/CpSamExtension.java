@@ -31,10 +31,10 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 	private static final String EXTENSION_NAME = resources.getString("name");
 	private static final String EXTENSION_DESCRIPTION = resources.getString("description");
 
-	private static final Version EXTENSION_QUPATH_VERSION = Version.parse("v0.7.0");
+	private static final Version EXTENSION_QUPATH_VERSION = Version.parse("v0.8.0");
 
 	private static final GitHubRepo EXTENSION_REPOSITORY = GitHubRepo.create(
-			"CPSAM", "ajay1685", "qupath-extension-cpsam");
+			EXTENSION_NAME, "ajay1685", "qupath-extension-cpsam");
 
 	private boolean isInstalled = false;
 

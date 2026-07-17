@@ -96,25 +96,6 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
     public long getPixelsProcessedCount() { return nPixelsProcessed.get(); }
     public boolean wasInterrupted() { return wasInterrupted.get(); }
 
-    /**
-     * Saves the normalized tile mat as a 32-bit TIFF image in {@link #saveDir} for
-     * preprocessing inspection. Uses ImageJ's IJ.save(), which correctly handles
-     * any channel count (including 2-channel images) and preserves float32 precision.
-
-    private void saveTile(Mat mat, RegionRequest region) {
-        int idx = saveTileIndex.getAndIncrement();
-        try {
-            var imp = OpenCVTools.matToImagePlus("tile", mat);
-            String filename = String.format("tile_%04d_x%d_y%d_w%d_h%d.tif",
-                    idx, region.getX(), region.getY(), region.getWidth(), region.getHeight());
-            Path outPath = saveDir.resolve(filename);
-            IJ.save(imp, outPath.toString());
-            logger.debug("Saved preprocessed tile to: {}", outPath);
-        } catch (Exception e) {
-            logger.warn("Failed to save preprocessed tile {}: {}", idx, e.getMessage());
-        }
-    }
-    */
 
     @Override
     public NDArray[] process(Parameters<Mat, Mat> params) throws IOException {

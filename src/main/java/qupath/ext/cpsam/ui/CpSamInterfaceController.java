@@ -144,7 +144,7 @@ public class CpSamInterfaceController extends VBox {
 
     private void initSpinners() {
         // Diameter
-        SpinnerValueFactory.DoubleSpinnerValueFactory diamFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(1.0, 200.0, 30.0, 0.5);
+        SpinnerValueFactory.DoubleSpinnerValueFactory diamFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(10.0, 200.0, 30.0, 1);
         diameterSpinner.setValueFactory(diamFactory);
         diamFactory.valueProperty().addListener((v, o, n) -> {});
 
@@ -153,11 +153,11 @@ public class CpSamInterfaceController extends VBox {
         flowThresholdSpinner.setValueFactory(flowFactory);
 
         // Cell prob threshold
-        SpinnerValueFactory.DoubleSpinnerValueFactory probFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(-2.0, 2.0, 0.0, 0.05);
+        SpinnerValueFactory.DoubleSpinnerValueFactory probFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(-5.0, 5.0, 0.0, 0.05);
         cellProbThresholdSpinner.setValueFactory(probFactory);
 
         // Niter
-        SpinnerValueFactory.IntegerSpinnerValueFactory niterFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 5000, 200);
+        SpinnerValueFactory.IntegerSpinnerValueFactory niterFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(100, 5000, 200, 10);
         niterSpinner.setValueFactory(niterFactory);
 
         // Batch size
@@ -187,12 +187,12 @@ public class CpSamInterfaceController extends VBox {
 
     private void initChoiceBoxes() {
         // Tile sizes
-        tileSizeChoiceBox.getItems().addAll(256, 512, 1024, 2048, 4096);
+        tileSizeChoiceBox.getItems().addAll(512, 1024, 2048, 4096);
         tileSizeChoiceBox.setValue(CpSamPreferences.tileSizeProperty().getValue());
         tileSizeChoiceBox.valueProperty().addListener((v, o, n) -> CpSamPreferences.tileSizeProperty().set(n));
 
         // Tile padding
-        tilePaddingChoiceBox.getItems().addAll(0, 16, 32, 48, 64, 80, 96);
+        tilePaddingChoiceBox.getItems().addAll(0, 32, 64, 96, 128);
         tilePaddingChoiceBox.setValue(CpSamPreferences.tilePaddingProperty().getValue());
         tilePaddingChoiceBox.valueProperty().addListener((v, o, n) -> CpSamPreferences.tilePaddingProperty().set(n));
 
