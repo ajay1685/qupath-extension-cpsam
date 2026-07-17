@@ -120,19 +120,19 @@ Please refer to Cellpose documentation for additional information regarding norm
 > [!TIP]
 > Refer to Cellpose documentation, verify everything work with Cellpose python install first.
 
-## Model Licensing Terms
+## Licensing Terms for the Torchscript Models
 
 > [!CAUTION]
 > Please consider doing your own research regarding applicable licenses.
 
-The TorchScript models loaded by this extension are derived from the [Cellpose-SAM project](https://github.com/mouseland/cellpose-sam). Model weights were trained on datasets with various licensing terms. Users are responsible for ensuring their use complies with the original model licenses and training data terms of service.
+The TorchScript models loaded by this extension are derived from the [Cellpose v4.x](https://github.com/mouseland/cellpose-sam). The cellpose models were trained on datasets with varying licensing terms. Users are responsible for ensuring their use complies with the original licenses and terms of the cellpose model weights (cpsam, cpsam_v2, cpdino, cpdino-vitb) from cellpose.
 
 For license details please refer to Cellpose repository: https://github.com/mouseland/cellpose
 
 > [!TIP]
 > Interesting discussion regarding this topic: https://forum.image.sc/t/question-about-cellpose-sam-pretrained-model-licensing-in-commercial-bioimage-software/121128
 
-## License for QuPath-Extension-CPSAM
+## GPL v3 License for QuPath-Extension-CPSAM (excluding torchscript models)
 
 The extension code in this repository is licensed under the same terms as QuPath (GPL Version 3).
 
