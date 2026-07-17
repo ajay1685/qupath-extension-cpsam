@@ -263,7 +263,7 @@
                                         <tooltip><Tooltip text="Type of objects to create" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
-                                    <ComboBox fx:id="comboOutputType" prefWidth="100.0">
+                                    <ComboBox fx:id="comboOutputType" prefWidth="130.0">
                                         <tooltip><Tooltip text="Output object type" /></tooltip>
                                     </ComboBox>
                                 </HBox>
