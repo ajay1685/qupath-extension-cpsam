@@ -116,23 +116,23 @@
                             <children>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                                     <Label styleClass="regular" text="Norm low percentile">
-                                        <tooltip><Tooltip text="Lower percentile for per-channel intensity normalization" /></tooltip>
+                                        <tooltip><Tooltip text="Lower percentile for per-channel intensity normalization (global)" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
                                     <Spinner fx:id="normLowSpinner" prefWidth="75.0">
                                         <valueFactory>
-                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="0.0" max="100.0" initialValue="1.0" amountToStepBy="0.5" />
+                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="0.0" max="100.0" initialValue="1.0" amountToStepBy="0.1" />
                                         </valueFactory>
                                     </Spinner>
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                                     <Label styleClass="regular" text="Norm high percentile">
-                                        <tooltip><Tooltip text="Upper percentile for per-channel intensity normalization" /></tooltip>
+                                        <tooltip><Tooltip text="Upper percentile for per-channel intensity normalization (global)" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
                                     <Spinner fx:id="normHighSpinner" prefWidth="75.0">
                                         <valueFactory>
-                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="0.0" max="100.0" initialValue="99.0" amountToStepBy="0.5" />
+                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="0.0" max="100.0" initialValue="99.0" amountToStepBy="0.1" />
                                         </valueFactory>
                                     </Spinner>
                                 </HBox>
@@ -158,18 +158,18 @@
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                                     <Label styleClass="regular" text="Cell prob threshold">
-                                        <tooltip><Tooltip text="Min probability for cell detection" /></tooltip>
+                                        <tooltip><Tooltip text="Min probability for cell detection, ranges from -6.0 to 6.0." /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
                                     <Spinner fx:id="cellProbThresholdSpinner" prefWidth="75.0">
                                         <valueFactory>
-                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="-3.0" max="3.0" initialValue="0.0" />
+                                            <SpinnerValueFactory.DoubleSpinnerValueFactory min="-6.0" max="6.0" initialValue="0.0" />
                                         </valueFactory>
                                     </Spinner>
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                                     <Label styleClass="regular" text="Flow threshold">
-                                        <tooltip><Tooltip text="Max allowable flow error for cell validation" /></tooltip>
+                                        <tooltip><Tooltip text="Max allowable flow error for detection validation, set to 0 to disable flow error based quality control and return all detections." /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
                                     <Spinner fx:id="flowThresholdSpinner" prefWidth="75.0">
@@ -179,7 +179,7 @@
                                     </Spinner>
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                                    <Label styleClass="regular" text="Iterations">
+                                    <Label styleClass="regular" text="Iterations (niter)">
                                         <tooltip><Tooltip text="Max iterations for flow following" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
@@ -191,7 +191,7 @@
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                                     <Label styleClass="regular" text="Batch size">
-                                        <tooltip><Tooltip text="Number of patches per inference call" /></tooltip>
+                                        <tooltip><Tooltip text="This allows you to control VRAM usage during inference" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
                                     <Spinner fx:id="batchSizeSpinner" prefWidth="75.0">
@@ -219,12 +219,12 @@
                                     </ChoiceBox>
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                                    <Label styleClass="regular" text="Tile padding">
-                                        <tooltip><Tooltip text="Tile overlap padding in pixels" /></tooltip>
+                                    <Label styleClass="regular" text="Tile overlap">
+                                        <tooltip><Tooltip text="Tile overlap in pixels" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
                                     <ChoiceBox fx:id="tilePaddingChoiceBox" prefWidth="75.0">
-                                        <tooltip><Tooltip text="Tile overlap padding in pixels" /></tooltip>
+                                        <tooltip><Tooltip text="Tile overlap in pixels" /></tooltip>
                                     </ChoiceBox>
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
@@ -290,7 +290,7 @@
                         <VBox alignment="CENTER" styleClass="standard-spacing standard-padding">
                             <children>
                                 <HBox alignment="CENTER" styleClass="standard-spacing">
-                                    <Button fx:id="runButton" onAction="#runCpSam" prefWidth="200.0" text="Run CPSAM Segmentation">
+                                    <Button fx:id="runButton" onAction="#runCpSam" prefWidth="200.0" text="Run Segmentation">
                                         <tooltip><Tooltip text="Start segmentation" /></tooltip>
                                     </Button>
                                 </HBox>
