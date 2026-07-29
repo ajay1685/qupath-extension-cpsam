@@ -3,6 +3,7 @@ package qupath.ext.cpsam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.lib.objects.utils.Tiler;
+import qupath.ext.cpsam.ui.CpSamPreferences;
 
 /**
  * Tiling strategy for CpSam inference.

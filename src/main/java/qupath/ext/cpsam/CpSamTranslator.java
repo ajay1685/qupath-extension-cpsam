@@ -8,6 +8,7 @@ import ai.djl.translate.Translator;
 import ai.djl.translate.TranslatorContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.ext.cpsam.ui.CpSamPreferences;
 
 /**
  * DJL Translator that converts between a single input NDArray (image tensor)

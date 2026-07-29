@@ -11,19 +11,8 @@
     -fx-spacing: 2;
 }
 
-/* spacing - current use in VBox*/
-.standard-vertical-spacing {
-    -fx-spacing: 2;
-}
-
 .standard-padding {
     -fx-padding: 5;
-}
-
-.fa-icon {
-    -fx-font-family: FontAwesome;
-    -fx-font-size: 14px;
-    -fx-fill: -fx-text-base-color;
 }
 
 /* message-label-styles */

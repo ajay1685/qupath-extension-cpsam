@@ -6,7 +6,7 @@
  *
  * Prerequisites:
  *   - qupath-extension-cpsam installed
- *   - cpsam_wrapper.pt model file downloaded
+ *   - cpsam_wrapper.ts model file downloaded
  *   - qupath-extension-djl and PyTorch backend
  *   - system with gpu highly recommended
  *
@@ -18,8 +18,10 @@ import qupath.ext.cpsam.CpSam
 import qupath.lib.images.servers.ColorTransforms
 import qupath.fx.dialogs.Dialogs
 
-// Path to the cpsam_wrapper.pt file (or a directory containing it)
-def modelPath = "C:/Users/zalavaa/cellpose/notebooks/cpsam_wrapper.pt" 
+// Path to the cpsam_wrapper.ts file (or a directory containing it)
+// Torchscript models derived from cpsam and cpdino can be obtained from:
+// https://github.com/ajay1685/cpsam-torchscript-models
+def modelPath = "add/path/to/cpsam_wrapper.ts" 
 
 // Use "gpu0" or "gpu1" for cuda, "mps" for Apple Silicon, "cpu" for CPU
 def device = "gpu0"
@@ -32,9 +34,9 @@ def cpsam = CpSam.builder()
     .cellprobThreshold(0.0f)      // Cell probability threshold; lower = more cells (range ~-6 to +6)
     .flowThreshold(0.4f)          // Flow quality threshold; higher = stricter cell shape
     .niter(200)                   // Dynamics solver iterations
-    .batchSize(16)                 // VRAM ( i.e. 11GB VRAM = batchSize 16–32)
+    .batchSize(4)                 // Internal tile batch size — increase for GPU, decrease if OOM
     .tileDims(1024)               // Tile size in pixels (256–4096)
-    .interTilePadding(0)         // Overlap context between adjacent tiles
+    .interTilePadding(64)      // Overlap context between adjacent tiles (default 60)
     .build()
 
 // ── Run detection ─────────────────────────────────────────────────────────────

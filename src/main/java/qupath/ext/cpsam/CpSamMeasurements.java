@@ -14,11 +14,15 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Post-detection measurement utilities for CPSAM.
+ * Post-detection measurement utilities for CPSAM — fallback for QuPath &lt; 0.8.0.
  * <p>
- * Uses the per-object {@link ObjectMeasurements} API for QuPath 0.7.x compatibility.
+ * Uses the per-object {@link ObjectMeasurements} API with a parallel stream,
+ * which works on QuPath 0.7.x but is slower for large object counts than the
+ * batched API in {@link CpSamMeasurements}. Automatically invoked by
+ * {@link CpSamMeasurements} when the new API is unavailable.
  */
 class CpSamMeasurementsOld {
 
@@ -52,6 +56,8 @@ class CpSamMeasurementsOld {
      * <p>
      * Uses the single-object API in a parallel stream for QuPath 0.7.x compatibility.
      * Compartments are silently ignored for non-cell objects.
+     * If color deconvolution stains are available, the measurement server is transformed
+     * to use all non-residual deconvolution channels.
      *
      * @param imageData  the image to read pixel values from
      * @param objects    the detected objects to measure
@@ -63,12 +69,28 @@ class CpSamMeasurementsOld {
                                          double downsample) throws IOException {
         if (objects.isEmpty()) return;
         var server = imageData.getServer();
+
+        // Apply color deconvolution to measurement server if stains are available
+        var stains = imageData.getColorDeconvolutionStains();
+        var builder = new TransformedServerBuilder(server);
+        if (stains != null) {
+            List<Integer> stainNumbers = new ArrayList<>();
+            for (int s = 1; s <= 3; s++) {
+                if (!stains.getStain(s).isResidual())
+                    stainNumbers.add(s);
+            }
+            if (!stainNumbers.isEmpty()) {
+                builder.deconvolveStains(stains, stainNumbers.stream().mapToInt(i -> i).toArray());
+            }
+        }
+        var server2 = builder.build();
+
         logger.debug("Adding intensity measurements to {} objects at downsample={}", objects.size(), downsample);
         try {
             objects.parallelStream().forEach(obj -> {
                 try {
                     ObjectMeasurements.addIntensityMeasurements(
-                            server, obj, downsample, ALL_MEASUREMENTS, ALL_COMPARTMENTS);
+                            server2, obj, downsample, ALL_MEASUREMENTS, ALL_COMPARTMENTS);
                 } catch (IOException e) {
                     throw new RuntimeException("Failed to measure object: " + e.getMessage(), e);
                 }
@@ -85,12 +107,19 @@ class CpSamMeasurementsOld {
  * Object measurement utilities for CPSAM.
  * <p>
  * Uses the new {@link ObjectMeasurements} API introduced in QuPath v0.8.0
- * (PR #2113) which partitions objects into spatially-coherent batches to minimise
+ * which partitions objects into spatially-coherent batches to minimise
  * image reads, and optionally parallelises across a thread pool.
+ * Automatically falls back to per-object measurements ({@link CpSamMeasurementsOld})
+ * if running on QuPath &lt; 0.8.0.
  */
 class CpSamMeasurements {
 
     private static final Logger logger = LoggerFactory.getLogger(CpSamMeasurements.class);
+
+    // Version detection: try new batched API first; if unavailable, fall back to old per-object API.
+    // Checked only once per session; result cached to avoid repeated LinkageError handling.
+    private static final AtomicBoolean useNewApi = new AtomicBoolean(true);
+    private static final AtomicBoolean checked = new AtomicBoolean(false);
 
     private CpSamMeasurements() {}
 
@@ -111,18 +140,22 @@ class CpSamMeasurements {
     }
 
     /**
-     * Add per-channel intensity measurements to all objects using the batched API.
+     * Add per-channel intensity measurements to all objects.
      * <p>
-     * Objects are partitioned into spatially-coherent batches to minimise image tile reads.
-     * A fixed thread pool of {@code nThreads} workers is used so batches are processed
-     * in parallel. The method blocks until all batches complete.
+     * On QuPath &ge; 0.8.0, uses the batched {@link ObjectMeasurements} API which partitions
+     * objects into spatially-coherent batches to minimise image tile reads. A fixed thread
+     * pool of {@code nThreads} workers processes batches in parallel.
+     * <p>
+     * On QuPath &lt; 0.8.0, automatically falls back to per-object measurements via a
+     * parallel stream ({@link CpSamMeasurementsOld}). The fallback is detected on first
+     * call and cached for subsequent invocations.
      * <p>
      * All {@link ObjectMeasurements.Measurements} (mean, median, min, max, std-dev) and all
      * {@link ObjectMeasurements.Compartments} (nucleus, cytoplasm, cell, membrane) are measured.
      * Compartments are silently ignored for non-cell objects.
      * <p>
      * If color deconvolution stains are available in the image, the measurement server is
-     * transformed to use all non-residual deconvolution channels.
+     * transformed to use all non-residual deconvolution channels (e.g. Hematoxylin/Eosin).
      *
      * @param imageData  the image to read pixel values from
      * @param objects    the detected objects to measure
@@ -135,6 +168,23 @@ class CpSamMeasurements {
                                          double downsample,
                                          int nThreads) throws IOException {
         if (objects.isEmpty()) return;
+
+        // On first call, check if the new batched API (QuPath 0.8.0+) is available
+        if (useNewApi.compareAndSet(true, false)) {
+            try {
+                // Probe: access ALL_MEASUREMENTS — throws NoSuchFieldError on QuPath < 0.8.0
+                @SuppressWarnings("unused") Object probe = ObjectMeasurements.ALL_MEASUREMENTS;
+            } catch (LinkageError e) {
+                logger.info("QuPath < 0.8.0 detected — falling back to per-object intensity measurements");
+                checked.set(true);
+            }
+        }
+
+        if (!useNewApi.get() && checked.get()) {
+            CpSamMeasurementsOld.addIntensityMeasurements(imageData, objects, downsample);
+            return;
+        }
+
         var server = imageData.getServer();
         int threads = Math.max(1, nThreads);
         logger.debug("Adding intensity measurements to {} objects using {} thread(s) at downsample={}",

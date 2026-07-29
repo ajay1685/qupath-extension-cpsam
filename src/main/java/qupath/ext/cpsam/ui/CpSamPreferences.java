@@ -1,4 +1,4 @@
-package qupath.ext.cpsam;
+package qupath.ext.cpsam.ui;
 
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
@@ -15,9 +15,6 @@ public class CpSamPreferences {
     private CpSamPreferences() {
         throw new AssertionError("Cannot instantiate this class");
     }
-
-    private static final StringProperty modelDirectoryProperty = PathPrefs.createPersistentPreference(
-            "cpsam.model.dir", null);
 
     private static final StringProperty preferredDeviceProperty = PathPrefs.createPersistentPreference(
             "cpsam.pref.device", getDefaultDevice());
@@ -56,13 +53,49 @@ public class CpSamPreferences {
             "cpsam.measure_intensity", false);
 
     private static final IntegerProperty numThreadsProperty = PathPrefs.createPersistentPreference(
-            "cpsam.num_threads", GeneralTools.clipValue(Runtime.getRuntime().availableProcessors() / 2, 1, 4));
+            "cpsam.num_threads", GeneralTools.clipValue(Runtime.getRuntime().availableProcessors() / 2, 1, 8));
 
         private static final BooleanProperty verboseLoggingProperty = PathPrefs.createPersistentPreference(
             "cpsam.verbose_logging", false);
 
     private static final BooleanProperty savePreprocessedTilesProperty = PathPrefs.createPersistentPreference(
             "cpsam.save_preprocessed_tiles", false);
+
+    /**
+     * Last selected model family (e.g. "CPSAM", "CPDINO").
+     * Used to restore the family choice box selection across sessions.
+     */
+    private static final StringProperty modelFamilyProperty = PathPrefs.createPersistentPreference(
+            "cpsam.model_family", null);
+
+    /**
+     * Last selected model variant name (e.g. "cpsam-v2", "cpdino-vitl-cpu").
+     * Used to restore the combo box selection across sessions.
+     */
+    private static final StringProperty modelCatalogKeyProperty = PathPrefs.createPersistentPreference(
+            "cpsam.model_catalog_key", null);
+
+    /**
+     * Prefix for downloaded version tracking per model name.
+     * Accessed via {@link #downloadedVersionProperty(String)}.
+     */
+    private static final String downloadedVersionPrefix = "cpsam.downloaded_version.";
+
+    /**
+     * Get a StringProperty for tracking the downloaded version of a specific model.
+     * @param modelName the model name (e.g. "cpsam-v2", "cpdino-vitl-cpu")
+     * @return a persistent StringProperty, null if no version has been recorded
+     */
+    public static StringProperty downloadedVersionProperty(String modelName) {
+        return PathPrefs.createPersistentPreference(downloadedVersionPrefix + modelName, null);
+    }
+
+    /**
+     * Custom directory for downloaded models.
+     * If null, defaults to QuPath user directory + {@code /cpsam-models}.
+     */
+    private static final StringProperty modelDownloadDirectoryProperty = PathPrefs.createPersistentPreference(
+            "cpsam.model_download.dir", null);
 
     /**
      * MPS should work reliably (and much faster) on Apple Silicon, so set as default.
@@ -74,10 +107,6 @@ public class CpSamPreferences {
             return "mps";
         }
         return "cpu";
-    }
-
-    public static StringProperty modelDirectoryProperty() {
-        return modelDirectoryProperty;
     }
 
     public static StringProperty preferredDeviceProperty() {
@@ -138,5 +167,17 @@ public class CpSamPreferences {
 
     public static BooleanProperty savePreprocessedTilesProperty() {
         return savePreprocessedTilesProperty;
+    }
+
+    public static StringProperty modelFamilyProperty() {
+        return modelFamilyProperty;
+    }
+
+    public static StringProperty modelCatalogKeyProperty() {
+        return modelCatalogKeyProperty;
+    }
+
+    public static StringProperty modelDownloadDirectoryProperty() {
+        return modelDownloadDirectoryProperty;
     }
 }

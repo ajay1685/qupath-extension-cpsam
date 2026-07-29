@@ -26,6 +26,7 @@ import qupath.lib.objects.utils.Tiler;
 import qupath.lib.plugins.TaskRunner;
 import qupath.lib.plugins.TaskRunnerUtils;
 import qupath.opencv.ops.ImageOps;
+import qupath.ext.cpsam.ui.CpSamPreferences;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -119,7 +120,6 @@ public class CpSam {
             cachedModelPath = null;
             cachedDevice = null;
         }
-        //CpSamUtils.emptyCudaCache();
     }
 
     private final int tileDims;
@@ -372,7 +372,7 @@ public class CpSam {
         /**
          * Set the maximum image dimension (pixels) used when auto-computing the downsample factor
          * for global normalization. The downsample is chosen so the larger dimension of the
-         * annotation bounding box does not exceed this value. Default is 2048.
+         * annotation bounding box does not exceed this value. Default is 4096 (clamped to &ge;4096).
          */
         public Builder normalizationMaxDimension(int maxDimension) {
             this.normalizationMaxDimension = Math.max(4096, maxDimension);

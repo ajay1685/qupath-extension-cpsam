@@ -12,6 +12,7 @@ import qupath.lib.objects.PathObject;
 import qupath.lib.objects.utils.ObjectMerger;
 import qupath.lib.objects.utils.ObjectProcessor;
 import qupath.lib.objects.utils.OverlapFixer;
+import qupath.ext.cpsam.ui.CpSamPreferences;
 
 /**
  * Post-processing strategy for CpSam inference.

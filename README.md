@@ -89,7 +89,7 @@ Shape and intensity feature can be calculated on the fly:
 | Flow threshold | 0.4 | Flow integration threshold; lower = stricter quality filter, zero = return all cells |
 | Tile size | 1024 | Non-overlapping tile step size in pixels |
 | Tile padding | 64 | Extra context pixels per tile (model receives tile + 2×padding) |
-| Batch size | 8 | Models's internal batch size for CPSAM and CPDINO backbone; larger = more VRAM required |
+| Batch size | 4 | Models's internal batch size for CPSAM and CPDINO backbone; larger = more VRAM required |
 | Threads | 2 | Parallel threads for tile processing and measurements |
 | Normalization percentile (low/high) | 1 and 99 | Per-channel global percentile normalization range |
 
@@ -169,7 +169,7 @@ This extension was inspired by and builds upon the work of several open-source p
 - Several interesting discussions in the image.sc forum.
 
 ### Disclaimer
-- Several large language models (both open and proprietary weights) were used in the development and implementation of various features for this extension, with human (me) in the loop. So if you spot AI slop please let me know.
+- Several large language models (both open and proprietary weights) were used in the development and implementation of various features of this extension, with human in the loop.
 
 ---
 

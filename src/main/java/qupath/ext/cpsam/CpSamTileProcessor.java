@@ -7,7 +7,6 @@ import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.DataType;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.translate.TranslateException;
-//import ij.IJ;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +16,7 @@ import qupath.lib.images.servers.ColorTransforms;
 import qupath.lib.regions.RegionRequest;
 import qupath.lib.roi.interfaces.ROI;
 import qupath.opencv.ops.ImageOp;
-//import qupath.opencv.tools.OpenCVTools;
+import qupath.ext.cpsam.ui.CpSamPreferences;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -67,7 +66,6 @@ class CpSamTileProcessor implements Processor<Mat, Mat, NDArray[]> {
 
     /** Directory to save normalized tiles into before inference, or {@code null} to skip saving. */
     private final Path saveDir;
-    //private final AtomicInteger saveTileIndex = new AtomicInteger(0);
 
     CpSamTileProcessor(BlockingQueue<Predictor<NDList, NDList>> predictors,
                        Collection<? extends ColorTransforms.ColorTransform> channels, NDManager ndManager,

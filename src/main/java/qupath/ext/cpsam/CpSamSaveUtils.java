@@ -120,21 +120,6 @@ class CpSamSaveUtils {
      */
     static void clearTempFiles(Path saveDir) {
         if (saveDir != null && Files.exists(saveDir)) {
-            //try {
-                //Files.walk(saveDir)
-                        //.sorted((a, b) -> b.compareTo(a)) // delete children first
-                        //.forEach(path -> {
-                            //try {
-                                //Files.delete(path);
-                            //} catch (IOException e) {
-                                //logger.warn("Failed to delete temp file {}: {}", path, e.getMessage());
-                            //}
-                        //});
-                //logger.info("Cleared temporary tile save directory: {}", saveDir);
-            //} catch (IOException e) {
-                //logger.warn("Failed to clear temporary tile save directory {}: {}", saveDir, e.getMessage());
-            //}
-        
             try (var paths = Files.list(saveDir)) { // top-level only
                 paths.filter(Files::isRegularFile)
                     .filter(p -> {
@@ -145,7 +130,6 @@ class CpSamSaveUtils {
                         try {
                             Files.deleteIfExists(p);
                         } catch (IOException e) {
-                            //throw new RuntimeException("Failed to delete " + p, e);
                             logger.warn("Failed to delete temp file {}: {}", p, e.getMessage());
                         }
                     });

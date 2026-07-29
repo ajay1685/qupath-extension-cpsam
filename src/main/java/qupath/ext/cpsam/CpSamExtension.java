@@ -10,6 +10,7 @@ import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.cpsam.ui.CpSamInterfaceController;
+import qupath.ext.cpsam.ui.CpSamPreferences;
 import qupath.fx.prefs.controlsfx.PropertyItemBuilder;
 import qupath.fx.utils.FXUtils;
 import qupath.lib.common.Version;
@@ -55,25 +56,24 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 	}
 
 	private void addPreferenceToPane(QuPathGUI qupath) {
-		var propertyItem = new PropertyItemBuilder<>(enableExtensionProperty, Boolean.class)
-				.name(resources.getString("menu.enable"))
-				.category("CPSAM extension")
-				.description("Enable CPSAM extension")
-				.build();
+		final String category = resources.getString("prefs.category");
+
 		var verboseLoggingItem = new PropertyItemBuilder<>(CpSamPreferences.verboseLoggingProperty(), Boolean.class)
-				.name("Verbose logging")
-				.category("CPSAM extension")
-				.description("Log detailed CPSAM pipeline diagnostics for debugging")
+				.name(resources.getString("prefs.verbose_logging.name"))
+				.category(category)
+				.description(resources.getString("prefs.verbose_logging.description"))
 				.build();
 		var savePreprocessedTilesItem = new PropertyItemBuilder<>(CpSamPreferences.savePreprocessedTilesProperty(), Boolean.class)
-				.name("Save preprocessed tiles")
-				.category("CPSAM extension")
-				.description("Save each normalized tile as a 16-bit TIFF before inference. Files are written to a timestamped 'cpsam-debug-tiles' folder next to the image.")
+				.name(resources.getString("prefs.save_preprocessed_tiles.name"))
+				.category(category)
+				.description(resources.getString("prefs.save_preprocessed_tiles.description"))
 				.build();
-		qupath.getPreferencePane()
-				.getPropertySheet()
-				.getItems()
-				.add(propertyItem);
+		var modelDownloadDirItem = new PropertyItemBuilder<>(CpSamPreferences.modelDownloadDirectoryProperty(), String.class)
+				.name(resources.getString("prefs.model_download_dir.name"))
+				.category(category)
+				.description(resources.getString("prefs.model_download_dir.description"))
+				.build();
+
 		qupath.getPreferencePane()
 				.getPropertySheet()
 				.getItems()
@@ -82,6 +82,10 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 				.getPropertySheet()
 				.getItems()
 				.add(savePreprocessedTilesItem);
+		qupath.getPreferencePane()
+				.getPropertySheet()
+				.getItems()
+				.add(modelDownloadDirItem);
 	}
 
 
@@ -89,7 +93,7 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 		var menu = qupath.getMenu("Extensions>" + EXTENSION_NAME, true);
 
 		// Main UI panel
-		MenuItem menuItem = new MenuItem("Run CPSAM Segmentation");
+		MenuItem menuItem = new MenuItem(resources.getString("ui.run"));
 		menuItem.setOnAction(e -> createStage(qupath));
 		menuItem.disableProperty().bind(enableExtensionProperty.not());
 		menu.getItems().add(menuItem);
@@ -99,8 +103,8 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 				.getResourceAsStream("scripts/CpSam_detection_template.groovy")) {
 			if (stream != null) {
 				String script = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-				MenuItem scriptItem = new MenuItem("CpSam detection script template");
-				scriptItem.setOnAction(e -> openScript(qupath, "CpSam detection", script));
+				MenuItem scriptItem = new MenuItem(resources.getString("ui.menu.script.template"));
+				scriptItem.setOnAction(e -> openScript(qupath, resources.getString("ui.script.name"), script));
 				scriptItem.disableProperty().bind(enableExtensionProperty.not());
 				menu.getItems().add(scriptItem);
 			} else {
@@ -121,9 +125,7 @@ public class CpSamExtension implements QuPathExtension, GitHubProject {
 				stage.initOwner(QuPathGUI.getInstance().getStage());
 				stage.setTitle(resources.getString("title"));
 				stage.setResizable(false);
-				// Free cached GPU model when the panel is closed
-				//stage.setOnHidden(e -> CpSam.clearModelCache());
-				//stage.setOnHidden(e -> CpSamUtils.emptyCudaCache());
+				stage.setOnCloseRequest(e -> pane.close());
 			} catch (IOException e) {
 				logger.error("Failed to load CPSAM UI", e);
 				return;

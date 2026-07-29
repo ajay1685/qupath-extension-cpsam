@@ -1,0 +1,22 @@
+[
+  {
+    "name": "cpsam_wrapper",
+    "displayName": "CPSAM (ViT-L)",
+    "family": "CPSAM",
+    "type": null,
+    "version": "1.0.0",
+    "url": "https://github.com/ajay1685/cpsam-torchscript-models/releases/download/1.0.0/cpsam_wrapper.zip",
+    "deviceConstraint": "any",
+    "description": "Device: Works on CPU and GPU."
+  },
+  {
+    "name": "cpsam_v2_wrapper",
+    "displayName": "CPSAM V2 (ViT-L)",
+    "family": "CPSAM",
+    "type": null,
+    "version": "1.0.0",
+    "url": "https://github.com/ajay1685/cpsam-torchscript-models/releases/download/1.0.0/cpsam_v2_wrapper.zip",
+    "deviceConstraint": "any",
+    "description": "Device: Works on CPU and GPU."
+  }
+]

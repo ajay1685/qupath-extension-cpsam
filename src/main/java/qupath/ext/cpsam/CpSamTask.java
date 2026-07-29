@@ -33,12 +33,19 @@ public class CpSamTask extends Task<Void> {
     private final int batchSize;
     private final int tileSize;
     private final int tilePadding;
+    private final int numThreads;
+    private final double normLow;
+    private final double normHigh;
+    private final boolean measureShape;
+    private final boolean measureIntensity;
     private final Class<? extends PathObject> preferredOutputType;
     private final List<CpSamChannelItem> channelItems;
 
     public CpSamTask(ImageData<BufferedImage> imageData, String modelPathStr,
               String device, double diameter, float cellprobThreshold, float flowThreshold,
               int niter, int batchSize, int tileSize, int tilePadding,
+              int numThreads, double normLow, double normHigh,
+              boolean measureShape, boolean measureIntensity,
               Class<? extends PathObject> preferredOutputType, List<CpSamChannelItem> channelItems) {
         this.imageData = imageData;
         this.modelPathStr = modelPathStr;
@@ -50,6 +57,11 @@ public class CpSamTask extends Task<Void> {
         this.batchSize = batchSize;
         this.tileSize = tileSize;
         this.tilePadding = tilePadding;
+        this.numThreads = numThreads;
+        this.normLow = normLow;
+        this.normHigh = normHigh;
+        this.measureShape = measureShape;
+        this.measureIntensity = measureIntensity;
         this.preferredOutputType = preferredOutputType;
         this.channelItems = List.copyOf(channelItems);
     }
@@ -72,12 +84,7 @@ public class CpSamTask extends Task<Void> {
 
     @Override
     protected Void call() {
-        int nThreads = CpSamPreferences.numThreadsProperty().get();
-        double normLow = CpSamPreferences.normLowProperty().get();
-        double normHigh = CpSamPreferences.normHighProperty().get();
-        boolean measureShape = CpSamPreferences.measureShapeProperty().get();
-        boolean measureIntensity = CpSamPreferences.measureIntensityProperty().get();
-        var taskRunner = new TaskRunnerFX(QuPathGUI.getInstance(), nThreads);
+        var taskRunner = new TaskRunnerFX(QuPathGUI.getInstance(), numThreads);
 
         var selectedObjects = imageData.getHierarchy().getSelectionModel().getSelectedObjects();
 
@@ -97,7 +104,7 @@ public class CpSamTask extends Task<Void> {
                     .flowThreshold(flowThreshold)
                     .niter(niter)
                     .batchSize(batchSize)
-                    .numPredictors(nThreads)
+                    .numPredictors(numThreads)
                     .tileDims(tileSize)
                     .interTilePadding(tilePadding)
                     .inputChannels(buildChannelTransforms())
@@ -155,7 +162,7 @@ public class CpSamTask extends Task<Void> {
                                 """.formatted(
                                 modelPathStr.replace("\\", "/"),
                                 device, diameter, cellprobThreshold, flowThreshold,
-                                niter, batchSize, nThreads, tileSize, tilePadding,
+                                niter, batchSize, numThreads, tileSize, tilePadding,
                                 channelLine, normLow, normHigh, measureShape, measureIntensity
                         ).strip()
                 )));

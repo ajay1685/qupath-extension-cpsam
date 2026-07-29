@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import java.lang.String?>
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.CheckBox?>
@@ -18,8 +17,6 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Text?>
 <?import org.controlsfx.control.SearchableComboBox?>
-<?import org.controlsfx.control.SegmentedButton?>
-
 <?import javafx.scene.control.ComboBox?>
 <fx:root maxHeight="-Infinity" maxWidth="-Infinity" minHeight="300.0" minWidth="400.0" stylesheets="@CpsamInterface.css" type="VBox" xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1">
     <children>
@@ -28,49 +25,75 @@
                 <VBox alignment="TOP_CENTER" styleClass="standard-spacing">
                     <children>
                         <!-- ****** Model Selection ******* -->
-                        <Label styleClass="regular" text="Torchscript Wrapper" />
+                        <Label styleClass="regular" text="%ui.model.family.label" />
                         <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
                             <children>
-                                <Label fx:id="modelPathLabel"
-                                    maxHeight="1.7976931348623157E308"
-                                    maxWidth="270.0"
-                                    minWidth="-Infinity"
-                                    prefWidth="50"
-                                    text="%ui.options.directory-not-set"
-                                    textOverrun="LEADING_ELLIPSIS"
-                                    HBox.hgrow="SOMETIMES">
-                                    <styleClass>
-                                        <String fx:value="warning-message" />
-                                        <String fx:value="standard-message" />
-                                    </styleClass>
-                                    <tooltip>
-                                        <Tooltip fx:id="tooltipModelDir" text="%ui.options.directory-not-set.tooltip" />
-                                    </tooltip>
-                                </Label>
+                                <ChoiceBox fx:id="modelFamilyChoiceBox" prefWidth="100.0">
+                                    <tooltip><Tooltip text="Select model family (CPSAM or CPDINO)" /></tooltip>
+                                </ChoiceBox>
 
-                                <Button fx:id="modelPathButton"
-                                        mnemonicParsing="false"
-                                        onAction="#promptForModelDirectory"
-                                        prefWidth="75.0"
-                                        text="Select"
-                                        styleClass="standard-message">
-                                        <HBox.margin>
-                                            <Insets left="10.0" />
-                                        </HBox.margin>
-                                    <tooltip>
-                                        <Tooltip text="Choose model file" />
-                                    </tooltip>
-                                    <graphic>
-                                        <Text styleClass="fa-icon" text="" />
-                                    </graphic>
+                                <Pane minWidth="7" HBox.hgrow="ALWAYS" />
+
+                                <Label styleClass="regular" text="%ui.model.variant.label" />
+
+                                <ComboBox fx:id="modelVariantCombo" prefWidth="200.0" disable="true">
+                                    <tooltip><Tooltip text="Select model variant to download" /></tooltip>
+                                </ComboBox>
+                            </children>
+                        </HBox>
+
+                        <!-- Download button row -->
+                        <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
+                            <children>
+                                <Button fx:id="modelDownloadButton"
+                                    mnemonicParsing="false"
+                                    onAction="#handleDownloadModel"
+                                    prefWidth="120.0"
+                                    text="%ui.model.download.button"
+                                    disable="true">
+                                    <tooltip><Tooltip text="Download selected model from catalog" /></tooltip>
                                 </Button>
                             </children>
-
-                            <styleClass>
-                                <String fx:value="standard-spacing" />
-                                <String fx:value="standard-padding" />
-                            </styleClass>
                         </HBox>
+
+
+
+                        <!-- Active model indicator: shows which model will be used for inference -->
+                        <Label fx:id="labelActiveModel"
+                            alignment="TOP_LEFT"
+                            maxWidth="Infinity"
+                            minWidth="-Infinity"
+                            text=""
+                            textFill="#888888"
+                            wrapText="true"/>
+
+                        <!-- Model description -->
+                        <Label fx:id="labelModelDescription"
+                            alignment="TOP_LEFT"
+                            maxWidth="Infinity"
+                            minWidth="-Infinity"
+                            styleClass="regular"
+                            text=""
+                            textFill="#888888"
+                            visible="false"
+                            wrapText="true"/>
+
+                        <!-- Device compatibility warning -->
+                        <Label fx:id="labelDeviceWarning"
+                            alignment="TOP_LEFT"
+                            maxWidth="Infinity"
+                            minWidth="-Infinity"
+                            styleClass="warning-message"
+                            text=""
+                            visible="false"
+                            wrapText="true"/>
+
+                        <!-- Progress bar -->
+                        <javafx.scene.control.ProgressBar fx:id="modelDownloadProgress"
+                            prefWidth="Infinity" progress="-1.0" visible="false"
+                            styleClass="standard-spacing">
+                            <tooltip><Tooltip text="Download progress" /></tooltip>
+                        </javafx.scene.control.ProgressBar>
 
                         <Separator prefWidth="200.0" />
 
@@ -111,11 +134,11 @@
                         <Separator prefWidth="200.0" />
 
                         <!-- Normalization -->
-                        <Label styleClass="regular" text="Normalization" />
+                        <Label styleClass="regular" text="Global Normalization" />
                         <VBox styleClass="standard-spacing">
                             <children>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                                    <Label styleClass="regular" text="Norm low percentile">
+                                    <Label styleClass="regular" text="Percentile low">
                                         <tooltip><Tooltip text="Lower percentile for per-channel intensity normalization (global)" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />
@@ -126,7 +149,7 @@
                                     </Spinner>
                                 </HBox>
                                 <HBox alignment="CENTER_RIGHT" styleClass="standard-spacing">
-                                    <Label styleClass="regular" text="Norm high percentile">
+                                    <Label styleClass="regular" text="Percentile high">
                                         <tooltip><Tooltip text="Upper percentile for per-channel intensity normalization (global)" /></tooltip>
                                     </Label>
                                     <Pane minWidth="5" HBox.hgrow="ALWAYS" />

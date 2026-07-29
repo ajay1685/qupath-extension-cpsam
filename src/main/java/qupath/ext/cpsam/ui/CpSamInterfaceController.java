@@ -2,54 +2,36 @@ package qupath.ext.cpsam.ui;
 
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
-import javafx.beans.binding.BooleanBinding;
-import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ObservableValue;
-import javafx.collections.ListChangeListener;
 import javafx.concurrent.Worker;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
-import javafx.geometry.Insets;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.VBox;
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-import org.controlsfx.control.CheckComboBox;
-import org.controlsfx.control.SearchableComboBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.cpsam.CpSamChannelItem;
-import qupath.ext.cpsam.CpSamPreferences;
+import qupath.ext.cpsam.*;
 import qupath.ext.djl.DjlTools;
-import qupath.ext.cpsam.CpSamTask;
-import qupath.ext.cpsam.CpSamModel;
 import qupath.fx.dialogs.Dialogs;
-import qupath.fx.dialogs.FileChoosers;
-import qupath.fx.utils.FXUtils;
 import qupath.lib.common.ThreadTools;
 import qupath.lib.gui.QuPathGUI;
-import qupath.lib.gui.extensions.QuPathExtension;
-import qupath.lib.gui.prefs.PathPrefs;
+import qupath.lib.gui.UserDirectoryManager;
 import qupath.lib.images.ImageData;
 
+import java.text.MessageFormat;
+
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.ResourceBundle;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.FutureTask;
+import java.util.stream.Collectors;
 
 public class CpSamInterfaceController extends VBox {
 
@@ -57,9 +39,13 @@ public class CpSamInterfaceController extends VBox {
     private static final ResourceBundle resources = ResourceBundle.getBundle("qupath.ext.cpsam.ui.strings");
 
     @FXML
-    private Label modelPathLabel;
+    private ChoiceBox<String> modelFamilyChoiceBox;
     @FXML
-    private Button modelPathButton;
+    private ComboBox<CpSamModel> modelVariantCombo;
+    @FXML
+    private Button modelDownloadButton;
+    @FXML
+    private javafx.scene.control.ProgressBar modelDownloadProgress;
     @FXML
     private Spinner<Double> diameterSpinner;
     @FXML
@@ -93,6 +79,13 @@ public class CpSamInterfaceController extends VBox {
     @FXML
     private Label labelMessage;
     @FXML
+    private Label labelActiveModel;
+    @FXML
+    private Label labelModelDescription;
+    @FXML
+    private Label labelDeviceWarning;
+
+    @FXML
     private ComboBox<CpSamChannelItem> channelCombo1;
     @FXML
     private ComboBox<CpSamChannelItem> channelCombo2;
@@ -100,11 +93,20 @@ public class CpSamInterfaceController extends VBox {
     private ComboBox<CpSamChannelItem> channelCombo3;
 
     private final ExecutorService pool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam", true));
+    private final ExecutorService downloadPool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam-download", true));
     private final QuPathGUI qupath;
-    private final ObjectProperty<FutureTask<?>> pendingTask = new SimpleObjectProperty<>();
-    private final BooleanProperty pytorchAvailable = new SimpleBooleanProperty(false);
+    private final ObjectProperty<Task<?>> pendingTask = new SimpleObjectProperty<>();
 
     private static final ObjectProperty<Path> modelPathBinding = new SimpleObjectProperty<>();
+
+    /** Loaded remote model catalog entries. */
+    private List<CpSamRemoteModel> remoteCatalog;
+
+    /** Variant combo value change listener — stored as a field so it can be detached/reattached during auto-selection. */
+    private javafx.beans.value.ChangeListener<CpSamModel> variantSelectionListener;
+
+    /** Channel 2 → Channel 3 disable listener — stored as a field so it can be detached/reattached when image changes. */
+    private javafx.beans.value.ChangeListener<CpSamChannelItem> channelCombo2Listener;
 
     public static CpSamInterfaceController createInstance(QuPathGUI qupath) throws IOException {
         return new CpSamInterfaceController(qupath);
@@ -118,24 +120,13 @@ public class CpSamInterfaceController extends VBox {
         loader.setController(this);
         loader.load();
 
-        // Restore persisted model path (only if not already set in this session)
-        if (modelPathBinding.get() == null) {
-            String savedPath = CpSamPreferences.modelDirectoryProperty().get();
-            if (savedPath != null && !savedPath.isBlank()) {
-                Path p = Path.of(savedPath);
-                if (Files.exists(p)) {
-                    modelPathBinding.set(p);
-                }
-            }
-        }
-
         // Initialize controls
         initSpinners();
         initChoiceBoxes();
-        initBindings();
         initPyTorchCheck();
-        updateModelPathLabel();
         updateDeviceChoices();
+        initModelSelection();
+        initBindings();
         // Populate channel combos from the current image; repopulate when image changes
         qupath.imageDataProperty().addListener(this::handleImageDataChange);
         handleImageDataChange(qupath.imageDataProperty(), null, qupath.imageDataProperty().get());
@@ -143,21 +134,24 @@ public class CpSamInterfaceController extends VBox {
 
     private void initSpinners() {
         // Diameter
-        SpinnerValueFactory.DoubleSpinnerValueFactory diamFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(10.0, 200.0, 30.0, 1);
+        SpinnerValueFactory.DoubleSpinnerValueFactory diamFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(10.0, 200.0, CpSamPreferences.diameterProperty().get(), 1);
         diameterSpinner.setValueFactory(diamFactory);
-        diamFactory.valueProperty().addListener((v, o, n) -> {});
+        diamFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.diameterProperty().set(n));
 
         // Flow threshold
-        SpinnerValueFactory.DoubleSpinnerValueFactory flowFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 10.0, 0.4, 0.05);
+        SpinnerValueFactory.DoubleSpinnerValueFactory flowFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(0.0, 10.0, CpSamPreferences.flowThresholdProperty().get(), 0.05);
         flowThresholdSpinner.setValueFactory(flowFactory);
+        flowFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.flowThresholdProperty().set(n));
 
         // Cell prob threshold
-        SpinnerValueFactory.DoubleSpinnerValueFactory probFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(-5.0, 5.0, 0.0, 0.05);
+        SpinnerValueFactory.DoubleSpinnerValueFactory probFactory = new SpinnerValueFactory.DoubleSpinnerValueFactory(-5.0, 5.0, CpSamPreferences.cellprobThresholdProperty().get(), 0.05);
         cellProbThresholdSpinner.setValueFactory(probFactory);
+        probFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.cellprobThresholdProperty().set(n));
 
         // Niter
-        SpinnerValueFactory.IntegerSpinnerValueFactory niterFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(100, 5000, 200, 10);
+        SpinnerValueFactory.IntegerSpinnerValueFactory niterFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(100, 5000, CpSamPreferences.niterProperty().get(), 10);
         niterSpinner.setValueFactory(niterFactory);
+        niterFactory.valueProperty().addListener((v, o, n) -> CpSamPreferences.niterProperty().set(n));
 
         // Batch size
         SpinnerValueFactory.IntegerSpinnerValueFactory batchFactory = new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 128, CpSamPreferences.batchSizeProperty().get());
@@ -202,7 +196,362 @@ public class CpSamInterfaceController extends VBox {
         // Save device selection whenever it changes (population done in updateDeviceChoices)
         deviceChoices.valueProperty().addListener((v, o, n) -> {
             if (n != null) CpSamPreferences.preferredDeviceProperty().set(n);
+            checkDeviceCompatibility();
         });
+    }
+
+    private void initModelSelection() {
+        // Load remote model catalog from bundled JSON
+        remoteCatalog = CpSamRemoteModel.loadCatalog();
+        logger.info("Loaded {} remote model entries", remoteCatalog.size());
+
+        // Populate family choice box with unique families from the catalog
+        Set<String> families = remoteCatalog.stream()
+                .map(CpSamRemoteModel::getFamily)
+                .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+
+        if (families.isEmpty()) {
+            logger.warn("No model families found in catalog — model-index.json may be missing or failed to parse");
+            // Leave family box empty so user knows something went wrong
+            // Custom models can still be loaded via the scripting interface:
+            //   CpSam.runCpSam(imageData, annotation, new File("/path/to/model.ts"), ...)
+        } else {
+            modelFamilyChoiceBox.getItems().addAll(families);
+        }
+
+        // Restore saved family, or default to CPSAM if available, otherwise first family alphabetically
+        String savedFamily = CpSamPreferences.modelFamilyProperty().get();
+        String defaultFamily;
+        if (savedFamily != null && families.contains(savedFamily)) {
+            defaultFamily = savedFamily;
+        } else if (families.contains("CPSAM")) {
+            defaultFamily = "CPSAM";
+        } else {
+            defaultFamily = families.isEmpty() ? null : families.iterator().next();
+        }
+        modelFamilyChoiceBox.setValue(defaultFamily);
+
+        // On variant selection: notify device compatibility, update download button, auto-wire if downloaded
+        variantSelectionListener = (javafx.beans.value.ChangeListener<CpSamModel>) (obs, oldVal, newVal) -> {
+            if (newVal == null) return;
+
+            // Notify user which device types this model works with (no filtering — just inform)
+            notifyDeviceCompatibility(newVal);
+
+            updateDownloadButtonState(newVal);
+
+            // Auto-set the path if downloaded; clear it if not — prevents running inference
+            // with a stale path from a different variant
+            if (newVal.isValid()) {
+                modelPathBinding.set(newVal.getPath());
+            } else {
+                modelPathBinding.set(null);
+            }
+
+            // Update active model label so user knows what's selected
+            updateActiveModelLabel(newVal);
+
+            // Save selection preference
+            newVal.getName().ifPresent(name -> CpSamPreferences.modelCatalogKeyProperty().set(name));
+        };
+        modelVariantCombo.valueProperty().addListener(variantSelectionListener);
+
+        // Set up cell factory for download status icons
+        modelVariantCombo.setCellFactory(param -> new CpSamModelListCell());
+        modelVariantCombo.setButtonCell(new CpSamModelListCell());
+
+        // On family change, save preference, populate variants and filter devices for the auto-selected model
+        modelFamilyChoiceBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal == null) return;
+            CpSamPreferences.modelFamilyProperty().set(newVal);
+            populateVariantsAndFilterDevices(newVal);
+        });
+
+        // When the model download directory preference changes, rebuild the variant list so
+        // CpSamModel instances resolve against the new directory — without this, isValid()
+        // keeps checking the old directory and downloaded models are never detected.
+        CpSamPreferences.modelDownloadDirectoryProperty().addListener((obs, oldDir, newDir) -> {
+            String family = modelFamilyChoiceBox.getValue();
+            if (family != null) {
+                logger.info("Model download directory changed to: {} — refreshing variants", newDir);
+                populateVariantsAndFilterDevices(family);
+                refreshDownloadStatus();
+            }
+        });
+
+        // Trigger initial population with device filtering
+        if (defaultFamily != null) {
+            populateVariantsAndFilterDevices(defaultFamily);
+        }
+
+        // Restore previously selected variant
+        String savedKey = CpSamPreferences.modelCatalogKeyProperty().get();
+        if (savedKey != null && modelVariantCombo.getItems() != null) {
+            for (CpSamModel model : modelVariantCombo.getItems()) {
+                if (savedKey.equals(model.getName().orElse(""))) {
+                    modelVariantCombo.getSelectionModel().select(model);
+                    break;
+                }
+            }
+        }
+
+        // Scan cache directory for locally downloaded models to update validity status
+        refreshDownloadStatus();
+
+        // Initialize active model label based on current model path
+        if (modelPathBinding.get() == null) {
+            labelActiveModel.setText(resources.getString("ui.active.model.not-set"));
+        }
+    }
+
+    /**
+     * Populate the variant combo box with models matching the selected family.
+     * Models are created from remote catalog entries via CpSamModel.fromRemote().
+     * Variants with no compatible device on this machine are filtered out.
+     */
+    private void populateVariantsForFamily(String family) {
+        Path cacheDir = resolveCacheDir();
+
+        modelVariantCombo.getItems().clear();
+
+        List<CpSamModel> variants = remoteCatalog.stream()
+                .filter(remote -> remote.getFamily().equalsIgnoreCase(family))
+                .map(remote -> CpSamModel.fromRemote(remote, cacheDir))
+                .collect(Collectors.toList());
+
+        // Separate compatible vs incompatible based on available devices.
+        // If no devices are known yet (shouldn't happen), treat all as compatible.
+        List<String> availableDevices = new ArrayList<>(deviceChoices.getItems());
+        List<CpSamModel> compatible = new ArrayList<>();
+        List<CpSamModel> incompatible = new ArrayList<>();
+
+        if (availableDevices.isEmpty()) {
+            compatible.addAll(variants);
+        } else {
+            for (CpSamModel v : variants) {
+                boolean anyCompatible = availableDevices.stream()
+                    .anyMatch(d -> v.isDeviceCompatible(d));
+                if (anyCompatible) compatible.add(v);
+                else incompatible.add(v);
+            }
+        }
+
+        modelVariantCombo.getItems().addAll(compatible);
+
+        // Log filtered models
+        if (!incompatible.isEmpty()) {
+            logger.info("Filtered {} model(s) for family '{}' — no compatible devices available",
+                incompatible.size(), family);
+        }
+
+        // Enable/disable the combo based on whether any compatible variants exist
+        modelVariantCombo.setDisable(compatible.isEmpty());
+
+        // Default: select first available variant
+        if (!compatible.isEmpty()) {
+            modelVariantCombo.getSelectionModel().selectFirst();
+        }
+    }
+
+    /**
+     * Populate variants for a family and update active model label for the auto-selected model.
+     * Auto-selects the first already-downloaded variant if available, otherwise picks the first variant.
+     * Only considers variants compatible with the available devices.
+     */
+    private void populateVariantsAndFilterDevices(String family) {
+        modelVariantCombo.valueProperty().removeListener(variantSelectionListener);
+        try {
+            populateVariantsForFamily(family);
+
+            // Prefer selecting an already-downloaded variant from the compatible list
+            CpSamModel downloaded = null;
+            for (CpSamModel variant : modelVariantCombo.getItems()) {
+                if (variant.isValid()) {
+                    downloaded = variant;
+                    break;
+                }
+            }
+            if (downloaded != null) {
+                modelVariantCombo.getSelectionModel().select(downloaded);
+                modelPathBinding.set(downloaded.getPath());
+                updateActiveModelLabel(downloaded);
+            } else if (!modelVariantCombo.getItems().isEmpty()) {
+                // No models downloaded for this family — clear path so Run button disables
+                modelPathBinding.set(null);
+                CpSamModel first = modelVariantCombo.getValue();
+                if (first != null) {
+                    updateActiveModelLabel(first);
+                }
+            }
+        } finally {
+            modelVariantCombo.valueProperty().addListener(variantSelectionListener);
+        }
+    }
+
+    /**
+     * Scan the cache directory to refresh download status of combo box items.
+     * This is called on startup and after successful downloads.
+     */
+    private void refreshDownloadStatus() {
+        // Force re-evaluation by clearing and re-adding items so ListCells re-render
+        // Must save selection first — clearing items resets combo value to null
+        CpSamModel selected = modelVariantCombo.getValue();
+        var items = modelVariantCombo.getItems();
+        var snapshot = new ArrayList<>(items);
+        items.clear();
+        items.addAll(snapshot);
+
+        // Restore selection and update download button state
+        if (selected != null && items.contains(selected)) {
+            modelVariantCombo.getSelectionModel().select(selected);
+            updateDownloadButtonState(selected);
+        } else if (!items.isEmpty()) {
+            modelVariantCombo.getSelectionModel().selectFirst();
+        }
+    }
+
+    @FXML
+    void handleDownloadModel() {
+        CpSamModel selectedModel = modelVariantCombo.getValue();
+        if (selectedModel == null) {
+            Dialogs.showWarningNotification("CPSAM", "No model variant selected");
+            return;
+        }
+
+        // Check if already downloaded
+        if (selectedModel.isValid()) {
+            // Auto-set path if not already set
+            if (!Files.exists(modelPathBinding.get())) {
+                modelPathBinding.set(selectedModel.getPath());
+            }
+            return;
+        }
+
+        // Get remote URL for download
+        var urlOpt = selectedModel.getRemoteUrl();
+        if (!urlOpt.isPresent()) {
+            Dialogs.showErrorNotification("CPSAM", "No download URL available for this model");
+            return;
+        }
+
+        // Resolve cache directory
+        Path cacheDir = resolveCacheDir();
+
+        // Show progress bar
+        modelDownloadProgress.setVisible(true);
+        modelDownloadProgress.setProgress(0.0);
+
+        // Disable download button during download
+        modelDownloadButton.setDisable(true);
+
+        // Download asynchronously
+        CpSamModelDownloader downloader = new CpSamModelDownloader(cacheDir);
+        String modelName = selectedModel.getName().orElse("model");
+
+        CompletableFuture<CpSamModelDownloader.DownloadResult> future = CompletableFuture.supplyAsync(() ->
+            downloader.downloadFromUrl(
+                urlOpt.get().toString(),
+                modelName + ".zip",
+                null,  // SHA-256 checksum (null = skip verification for now)
+                p -> Platform.runLater(() -> modelDownloadProgress.setProgress(p))
+            ), downloadPool);
+
+        future.whenComplete((result, ex) -> {
+            Platform.runLater(() -> {
+                modelDownloadProgress.setVisible(false);
+                modelDownloadButton.setDisable(false);
+
+                if (ex != null) {
+                    Dialogs.showErrorNotification("CPSAM", "Download failed: " + ex.getMessage());
+                    logger.error("Download failed", ex);
+                    return;
+                }
+
+                if (result.isSuccess()) {
+                    Path modelPath = result.getPath();
+                    selectedModel.setPath(modelPath);
+                    modelPathBinding.set(modelPath);
+
+                    // Save the selection preference
+                    selectedModel.getName().ifPresent(name -> CpSamPreferences.modelCatalogKeyProperty().set(name));
+
+                    // Save the downloaded version for future update checks
+                    String version = selectedModel.getVersion();
+                    if (version != null && !version.isEmpty()) {
+                        selectedModel.getName().ifPresent(name ->
+                            CpSamPreferences.downloadedVersionProperty(name).set(version));
+                    }
+
+                    updateDownloadButtonState(selectedModel);
+                    updateActiveModelLabel(selectedModel);
+                    refreshDownloadStatus();
+                    Dialogs.showInfoNotification("CPSAM", "Model downloaded successfully: " + modelPath.getFileName());
+                } else {
+                    Dialogs.showErrorNotification("CPSAM", "Download failed: " + result.getMessage());
+                }
+            });
+        });
+    }
+
+    private Path resolveCacheDir() {
+        // Try preference first — create the directory if it doesn't exist yet
+        String prefDir = CpSamPreferences.modelDownloadDirectoryProperty().get();
+        if (prefDir != null && !prefDir.isBlank()) {
+            Path p = Path.of(prefDir);
+            if (Files.exists(p) && Files.isDirectory(p)) {
+                return p;
+            }
+            try {
+                Files.createDirectories(p);
+                logger.info("Created model download directory: {}", p);
+                return p;
+            } catch (IOException e) {
+                logger.warn("Could not use preferred model directory '{}' — falling back to default: {}", p, e.getMessage());
+            }
+        }
+
+        // Fall back to QuPath user directory / cpsam-models
+        Path qupathUserDir = UserDirectoryManager.getInstance().getUserPath();
+        if (qupathUserDir == null) {
+            // Very unlikely fallback
+            qupathUserDir = Path.of(System.getProperty("user.home"));
+        }
+        Path defaultCache = qupathUserDir.resolve("cpsam-models");
+
+        try {
+            Files.createDirectories(defaultCache);
+        } catch (IOException e) {
+            logger.warn("Could not create default cache directory: {}", defaultCache, e);
+            try {
+                defaultCache = Path.of(System.getProperty("java.io.tmpdir")).resolve("cpsam-models");
+                Files.createDirectories(defaultCache);
+            } catch (IOException e2) {
+                throw new RuntimeException("Cannot create cache directory", e2);
+            }
+        }
+
+        return defaultCache;
+    }
+
+    /** Update download button: disabled + "✓ Downloaded" if model valid; enabled + "Download" if not. */
+    private void updateDownloadButtonState(CpSamModel model) {
+        if (model == null) {
+            modelDownloadButton.setDisable(true);
+            return;
+        }
+
+        if (model.isValid()) {
+            modelDownloadButton.setDisable(true);
+            modelDownloadButton.setText(resources.getString("ui.model.downloaded.button"));
+            // Auto-wire the model path if not already set to something else
+            Path current = modelPathBinding.get();
+            if (current == null || !Files.exists(current)) {
+                modelPathBinding.set(model.getPath());
+            }
+        } else {
+            modelDownloadButton.setDisable(false);
+            modelDownloadButton.setText(resources.getString("ui.model.download.button"));
+        }
     }
 
     private void initBindings() {
@@ -221,13 +570,6 @@ public class CpSamInterfaceController extends VBox {
         measureIntensityCheckBox.selectedProperty().bindBidirectional(
                 CpSamPreferences.measureIntensityProperty());
 
-        // Model path label tooltip
-        modelPathLabel.setOnMouseClicked(e -> {
-            if (e.getClickCount() == 2) {
-                promptForModelDirectory();
-            }
-        });
-
         // Pending task execution
         pendingTask.addListener((observable, oldValue, newValue) -> {
             if (newValue != null) {
@@ -237,24 +579,19 @@ public class CpSamInterfaceController extends VBox {
     }
 
     private void initPyTorchCheck() {
+        // Ensure PyTorch is loaded before querying devices.
+        // DJL is in offline mode (ai.djl.offline=true set by DjlExtension), so Engine.getEngine()
+        // will NOT attempt a download — it either loads if already available or throws.
+        // Device choices are populated immediately after this in the constructor via updateDeviceChoices().
         try {
             Class.forName("ai.djl.pytorch.jni.PyTorchLibrary");
-            pytorchAvailable.set(true);
         } catch (ClassNotFoundException e) {
-            pytorchAvailable.set(false);
-            // Try to download PyTorch
             try {
                 ai.djl.engine.Engine.getInstance().getEngine("PyTorch");
-                pytorchAvailable.set(true);
             } catch (Exception ex) {
                 logger.warn("PyTorch engine not available");
             }
         }
-
-        // Update devices when PyTorch becomes available
-        pytorchAvailable.addListener((v, o, n) -> {
-            if (n) updateDeviceChoices();
-        });
     }
 
     private void updateDeviceChoices() {
@@ -285,20 +622,89 @@ public class CpSamInterfaceController extends VBox {
         } else {
             deviceChoices.getSelectionModel().selectFirst();
         }
+
+        // Check compatibility now that devices are populated
+        checkDeviceCompatibility();
     }
 
-    private void updateModelPathLabel() {
-        Path modelPath = modelPathBinding.get();
-        if (modelPath != null) {
-            modelPathLabel.getStyleClass().removeAll("warning-message");
-            modelPathLabel.getStyleClass().add("standard-message");
-            modelPathLabel.setCursor(javafx.scene.Cursor.HAND);
-            modelPathLabel.setText(modelPath.toString());
+    /**
+     * Notify the user which device types a model is compatible with.
+     * This replaces the old filterDevicesForModel — no filtering, just log + active label update.
+     */
+    private void notifyDeviceCompatibility(CpSamModel model) {
+        CpSamRemoteModel.DeviceConstraint constraint = model.getDeviceConstraint();
+        if (constraint == CpSamRemoteModel.DeviceConstraint.ANY) {
+            // No need to notify for universally-compatible models
+            return;
+        }
+
+        String constraintDesc = switch (constraint) {
+            case CPU -> "CPU";
+            case CUDA -> "CUDA GPU";
+            default -> "any device";
+        };
+
+        logger.info("Model '{}' requires {}", model.getName().orElse("unknown"), constraintDesc);
+    }
+
+    /**
+     * Update the active model label to show which model will be used for inference.
+     */
+    private void updateActiveModelLabel(CpSamModel model) {
+        if (model == null) {
+            labelActiveModel.setText(resources.getString("ui.active.model.not-set"));
+            labelModelDescription.setVisible(false);
+            labelDeviceWarning.setVisible(false);
+            return;
+        }
+
+        String displayName = model.getDisplayName() != null ? model.getDisplayName() : model.getName().orElse("?");
+        String status = model.isValid() ? "" : " (not downloaded)";
+        CpSamRemoteModel.DeviceConstraint constraint = model.getDeviceConstraint();
+        String deviceHint = switch (constraint) {
+            case ANY -> "";
+            case CPU -> " [CPU]";
+            case CUDA -> " [CUDA GPU]";
+        };
+
+        labelActiveModel.setText("Active model: " + displayName + status + deviceHint);
+
+        // Set description
+        String desc = model.getDescription();
+        if (desc.isEmpty()) {
+            labelModelDescription.setText("");
+            labelModelDescription.setVisible(false);
         } else {
-            modelPathLabel.getStyleClass().removeAll("standard-message");
-            modelPathLabel.getStyleClass().add("warning-message");
-            modelPathLabel.setText("No model selected");
-            modelPathLabel.setCursor(javafx.scene.Cursor.DEFAULT);
+            labelModelDescription.setText(desc);
+            labelModelDescription.setVisible(true);
+        }
+
+        // Check device compatibility
+        checkDeviceCompatibility();
+    }
+
+    /**
+     * Check if the currently selected device is compatible with the selected model.
+     * Shows a warning label if incompatible, hides it if compatible.
+     */
+    private void checkDeviceCompatibility() {
+        CpSamModel model = modelVariantCombo.getValue();
+        if (model == null) {
+            labelDeviceWarning.setVisible(false);
+            return;
+        }
+        String device = deviceChoices.getValue();
+        if (model.isDeviceCompatible(device)) {
+            labelDeviceWarning.setVisible(false);
+        } else {
+            String constraintDesc = switch (model.getDeviceConstraint()) {
+                case CPU -> resources.getString("ui.device.warning.cpu");
+                case CUDA -> resources.getString("ui.device.warning.cuda");
+                default -> resources.getString("ui.device.warning.any");
+            };
+            String pattern = resources.getString("ui.device.warning");
+            labelDeviceWarning.setText(MessageFormat.format(pattern, constraintDesc, device));
+            labelDeviceWarning.setVisible(true);
         }
     }
 
@@ -354,16 +760,20 @@ public class CpSamInterfaceController extends VBox {
 
         // Restore previous selection if still valid, else use a sensible default
         channelCombo1.setValue(restoreOrDefault(prev1, allChannels, 0));
-        channelCombo2.setValue(restoreOrDefaultOptional(prev2, allChannels, noneItems.get(0)));
-        channelCombo3.setValue(restoreOrDefaultOptional(prev3, allChannels, noneItems.get(0)));
+        channelCombo2.setValue(restoreOrDefaultOptional(prev2, allChannels, noneItems.get(0), 1));
+        channelCombo3.setValue(restoreOrDefaultOptional(prev3, allChannels, noneItems.get(0), 2));
 
         // Disable channel 3 when channel 2 is (None) — no point selecting a third channel if the second is zero-padded
-        channelCombo2.valueProperty().addListener((obs, oldVal, newVal) -> {
+        if (channelCombo2Listener != null) {
+            channelCombo2.valueProperty().removeListener(channelCombo2Listener);
+        }
+        channelCombo2Listener = (obs, oldVal, newVal) -> {
             channelCombo3.setDisable(newVal != null && newVal.isNone());
             if (newVal != null && newVal.isNone()) {
                 channelCombo3.setValue(null);
             }
-        });
+        };
+        channelCombo2.valueProperty().addListener(channelCombo2Listener);
     }
 
     /**
@@ -379,8 +789,9 @@ public class CpSamInterfaceController extends VBox {
     /**
      * Restore a previous selection for optional channel combos.
      * Accepts the value if it's in either the available channels or is a None item.
+     * @param defaultIndex index into allChannels to use as default (e.g. 1 for channel 2, 2 for channel 3)
      */
-    private CpSamChannelItem restoreOrDefaultOptional(CpSamChannelItem prev, List<CpSamChannelItem> allChannels, CpSamChannelItem noneDefault) {
+    private CpSamChannelItem restoreOrDefaultOptional(CpSamChannelItem prev, List<CpSamChannelItem> allChannels, CpSamChannelItem noneDefault, int defaultIndex) {
         if (prev != null) {
             // Check if it's a valid channel
             if (allChannels.contains(prev)) {
@@ -391,9 +802,9 @@ public class CpSamInterfaceController extends VBox {
                 return noneDefault;
             }
         }
-        // Default: second channel if available, otherwise None
-        if (allChannels.size() >= 2) {
-            return allChannels.get(1);
+        // Default: use the channel at defaultIndex if available, otherwise None
+        if (defaultIndex < allChannels.size()) {
+            return allChannels.get(defaultIndex);
         }
         return noneDefault;
     }
@@ -413,37 +824,6 @@ public class CpSamInterfaceController extends VBox {
     }
 
     @FXML
-    void promptForModelDirectory() {
-        Path currentPath = modelPathBinding.get();
-        File initialDir = null;
-        if (currentPath != null && Files.exists(currentPath)) {
-            if (Files.isDirectory(currentPath)) {
-                initialDir = currentPath.toFile();
-            } else if (currentPath.getParent() != null) {
-                initialDir = currentPath.getParent().toFile();
-            }
-        }
-
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Select torchScript wrapper for cpdino or cpsam");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("TorchScript Wrapper", "*.ts")
-        );
-        if (initialDir != null) {
-            chooser.setInitialDirectory(initialDir);
-        }
-        // chooser.setInitialFileName("cpsam_torchscript.pt");
-
-        File file = chooser.showOpenDialog(modelPathLabel.getScene().getWindow());
-        if (file != null) {
-            Path selected = file.toPath();
-            modelPathBinding.set(selected);
-            CpSamPreferences.modelDirectoryProperty().set(selected.toString());
-            updateModelPathLabel();
-        }
-    }
-
-    @FXML
     void runCpSam() {
         ImageData<BufferedImage> imageData = qupath.getImageData();
         if (imageData == null) {
@@ -451,17 +831,12 @@ public class CpSamInterfaceController extends VBox {
             return;
         }
 
-        Path modelPath = modelPathBinding.get();
-        if (modelPath == null) {
-            Dialogs.showErrorNotification("CPSAM", "No model path specified");
+        CpSamModel selectedModel = modelVariantCombo.getValue();
+        if (selectedModel == null || !selectedModel.isValid()) {
+            Dialogs.showErrorNotification("CPSAM", "No valid model selected — download a model from the catalog first");
             return;
         }
-
-        // Validate model path
-        if (!Files.exists(modelPath)) {
-            Dialogs.showErrorNotification("CPSAM", "Model file not found: " + modelPath);
-            return;
-        }
+        Path modelPath = selectedModel.getModelPath();
 
         // Check PyTorch
         try {
@@ -487,7 +862,24 @@ public class CpSamInterfaceController extends VBox {
         int batchSize = batchSizeSpinner.getValueFactory().getValue();
         int tileSize = tileSizeChoiceBox.getValue();
         int tilePadding = tilePaddingChoiceBox.getValue();
+        int numThreads = threadSpinner.getValueFactory().getValue();
+        double normLow = normLowSpinner.getValueFactory().getValue();
+        double normHigh = normHighSpinner.getValueFactory().getValue();
+        boolean measureShape = measureShapeCheckBox.isSelected();
+        boolean measureIntensity = measureIntensityCheckBox.isSelected();
         String device = deviceChoices.getSelectionModel().getSelectedItem();
+
+        // Check device compatibility before running
+        if (!selectedModel.isDeviceCompatible(device)) {
+            String constraintDesc = switch (selectedModel.getDeviceConstraint()) {
+                case CPU -> resources.getString("ui.device.warning.cpu");
+                case CUDA -> resources.getString("ui.device.warning.cuda");
+                default -> resources.getString("ui.device.warning.any");
+            };
+            String pattern = resources.getString("ui.device.incompatible.error");
+            Dialogs.showErrorNotification("CPSAM", MessageFormat.format(pattern, constraintDesc, device));
+            return;
+        }
 
         // Create output type mapping
         Class<? extends qupath.lib.objects.PathObject> outputClass = switch (comboOutputType.getSelectionModel().getSelectedItem()) {
@@ -509,9 +901,18 @@ public class CpSamInterfaceController extends VBox {
                 batchSize,
                 tileSize,
                 tilePadding,
+                numThreads,
+                normLow,
+                normHigh,
+                measureShape,
+                measureIntensity,
                 outputClass,
                 selectedChannels
         );
+
+        // Show running status
+        labelMessage.setStyle("");
+        labelMessage.setText(resources.getString("ui.status.running"));
 
         // Attach state listener
         task.stateProperty().addListener((observable, oldValue, newValue) -> {
@@ -519,10 +920,31 @@ public class CpSamInterfaceController extends VBox {
                 if (pendingTask.get() == task) {
                     pendingTask.set(null);
                 }
+                Platform.runLater(() -> {
+                    if (newValue == Worker.State.SUCCEEDED) {
+                        labelMessage.setStyle("");
+                        labelMessage.setText(resources.getString("ui.status.completed"));
+                    } else if (newValue == Worker.State.FAILED) {
+                        labelMessage.setStyle("-fx-text-fill: red;");
+                        labelMessage.setText(resources.getString("ui.status.error"));
+                    } else {
+                        labelMessage.setStyle("");
+                        labelMessage.setText("Cancelled");
+                    }
+                });
             }
         });
 
         pendingTask.set(task);
     }
 
+    /**
+     * Clean up resources when the panel is closed.
+     * Shuts down the download executor and clears the model cache.
+     */
+    public void close() {
+        pool.shutdownNow();
+        downloadPool.shutdownNow();
+        CpSam.clearModelCache();
+    }
 }
