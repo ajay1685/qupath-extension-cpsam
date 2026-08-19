@@ -8,6 +8,7 @@ import qupath.lib.objects.PathObject;
 import qupath.lib.roi.GeometryTools;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * An output handler that prunes detections touching tile step boundaries, then masks
@@ -30,10 +31,14 @@ class PruneObjectOutputHandler<S, T, U> implements OutputHandler<S, T, U> {
 
     private final OutputToObjectConverter<S, T, U> converter;
     private final int boundaryThreshold;
+    /** Optional shared counter incremented with object count after each tile. May be null. */
+    private final AtomicInteger detectedObjectCount;
 
-    PruneObjectOutputHandler(OutputToObjectConverter<S, T, U> converter, int boundaryThreshold) {
+    PruneObjectOutputHandler(OutputToObjectConverter<S, T, U> converter, int boundaryThreshold,
+                             AtomicInteger detectedObjectCount) {
         this.converter = converter;
         this.boundaryThreshold = boundaryThreshold;
+        this.detectedObjectCount = detectedObjectCount;
     }
 
     @Override
@@ -46,7 +51,7 @@ class PruneObjectOutputHandler<S, T, U> implements OutputHandler<S, T, U> {
             return false;
 
         var parentOrProxy = params.getParentOrProxy();
-        parentOrProxy.clearChildObjects();
+        parentOrProxy.removeAllChildObjects();
 
         // Remove objects within boundaryThreshold pixels of the tile step boundary,
         // except at the image boundary itself.
@@ -69,6 +74,12 @@ class PruneObjectOutputHandler<S, T, U> implements OutputHandler<S, T, U> {
 
         parentOrProxy.addChildObjects(newObjects);
         parentOrProxy.setLocked(true);
+
+        // Update shared counter for real-time progress reporting
+        if (detectedObjectCount != null) {
+            detectedObjectCount.addAndGet(newObjects.size());
+        }
+
         return true;
     }
 

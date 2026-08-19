@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.fx.dialogs.Dialogs;
 import qupath.lib.gui.QuPathGUI;
-import qupath.lib.gui.TaskRunnerFX;
 import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
 import qupath.lib.plugins.workflow.DefaultScriptableWorkflowStep;
@@ -15,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ResourceBundle;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import qupath.lib.images.servers.ColorTransforms;
 
@@ -84,7 +84,9 @@ public class CpSamTask extends Task<Void> {
 
     @Override
     protected Void call() {
-        var taskRunner = new TaskRunnerFX(QuPathGUI.getInstance(), numThreads);
+        // Shared counter for real-time object count in progress dialog
+        AtomicInteger detectedObjectCount = new AtomicInteger(0);
+        var taskRunner = new CpSamTaskRunner(QuPathGUI.getInstance(), numThreads, detectedObjectCount);
 
         var selectedObjects = imageData.getHierarchy().getSelectionModel().getSelectedObjects();
 
@@ -111,6 +113,7 @@ public class CpSamTask extends Task<Void> {
                     .normalizationPercentiles(normLow, normHigh)
                     .measureShape(measureShape)
                     .measureIntensity(measureIntensity)
+                    .detectedObjectCount(detectedObjectCount)
                     .taskRunner(taskRunner)
                     .preferredOutputType(preferredOutputType)
                     .build()

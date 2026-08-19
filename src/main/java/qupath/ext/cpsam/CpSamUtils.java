@@ -53,6 +53,11 @@ class CpSamUtils {
      * @param context a short label included in the log message to identify the call site
      */
     static void logVramUsage(String context) {
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (osName.contains("mac")) {
+            logger.debug("VRAM logging is not supported for macOS");
+            return; // nvidia-smi is not available on macOS
+        }
         try {
             Process proc = new ProcessBuilder(
                     "nvidia-smi",

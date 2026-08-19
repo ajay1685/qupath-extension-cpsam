@@ -14,6 +14,8 @@ import qupath.lib.objects.utils.ObjectProcessor;
 import qupath.lib.objects.utils.OverlapFixer;
 import qupath.ext.cpsam.ui.CpSamPreferences;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
  * Post-processing strategy for CpSam inference.
  * <p>
@@ -56,6 +58,8 @@ class CpSamPostProcessing {
     private final int pruneThreshold;
     /** IoMin threshold for merging near-duplicate cross-tile detections. */
     private final double ioMinThreshold;
+    /** Optional shared counter incremented per tile for real-time progress reporting. May be null. */
+    private final AtomicInteger detectedObjectCount;
 
     /**
      * Default configuration: {@code pruneThreshold=1}, {@code ioMinThreshold=0.5}.
@@ -63,20 +67,23 @@ class CpSamPostProcessing {
      * @param preferredOutputType the QuPath object class to create (detection, annotation, or cell)
      */
     CpSamPostProcessing(Class<? extends PathObject> preferredOutputType) {
-        this(preferredOutputType, 1, 0.5);
+        this(preferredOutputType, 1, 0.5, null);
     }
 
     /**
-     * @param preferredOutputType the QuPath object class to create
-     * @param pruneThreshold      pixels from the padded tile boundary within which objects are pruned
-     * @param ioMinThreshold      minimum IoMin score for two objects to be merged
+     * @param preferredOutputType   the QuPath object class to create
+     * @param pruneThreshold        pixels from the padded tile boundary within which objects are pruned
+     * @param ioMinThreshold        minimum IoMin score for two objects to be merged
+     * @param detectedObjectCount   optional shared counter for real-time progress reporting (may be null)
      */
     CpSamPostProcessing(Class<? extends PathObject> preferredOutputType,
                         int pruneThreshold,
-                        double ioMinThreshold) {
+                        double ioMinThreshold,
+                        AtomicInteger detectedObjectCount) {
         this.preferredOutputType = preferredOutputType;
         this.pruneThreshold      = pruneThreshold;
         this.ioMinThreshold      = ioMinThreshold;
+        this.detectedObjectCount = detectedObjectCount;
 
         if (CpSamPreferences.verboseLoggingProperty().get()) {
             logger.info("CpSamPostProcessing: outputType={}, pruneThreshold={} px, ioMinThreshold={}",
@@ -93,7 +100,8 @@ class CpSamPostProcessing {
     OutputHandler<Mat, Mat, NDArray[]> createOutputHandler() {
         return new PruneObjectOutputHandler<>(
                 new MaskToObjectConverter(preferredOutputType),
-                pruneThreshold);
+                pruneThreshold,
+                detectedObjectCount);
     }
 
     /**

@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Core orchestrator for CPSAM detection.
@@ -140,8 +141,9 @@ public class CpSam {
     private final int normalizationMaxDimension;
     private final double normalizationLowPercentile;
     private final double normalizationHighPercentile;
-    private final boolean measureShape; 
-    private final boolean measureIntensity; 
+    private final boolean measureShape;
+    private final boolean measureIntensity;
+    private final AtomicInteger detectedObjectCount;
 
     private CpSam(Builder builder) {
         this.tileDims = builder.tileDims;
@@ -164,6 +166,7 @@ public class CpSam {
         this.normalizationHighPercentile = builder.normalizationHighPercentile;
         this.measureShape = builder.measureShape;
         this.measureIntensity = builder.measureIntensity;
+        this.detectedObjectCount = builder.detectedObjectCount;
     }
 
     /**
@@ -235,6 +238,7 @@ public class CpSam {
         private double normalizationHighPercentile = 99.0;
         private boolean measureShape = false;
         private boolean measureIntensity = false;
+        private AtomicInteger detectedObjectCount = null;
 
         Builder() {}
 
@@ -412,6 +416,15 @@ public class CpSam {
             return this;
         }
 
+        /**
+         * Set a shared counter incremented by the output handler after each tile
+         * for real-time progress reporting. If not set, a new counter is created internally.
+         */
+        public Builder detectedObjectCount(AtomicInteger detectedObjectCount) {
+            this.detectedObjectCount = detectedObjectCount;
+            return this;
+        }
+
         public CpSam build() {
             return new CpSam(this);
         }
@@ -489,8 +502,14 @@ public class CpSam {
                                     normalizationLowPercentile, normalizationHighPercentile,
                                     saveDir);
 
+                            // Shared counter for real-time object count in progress dialog
+                            AtomicInteger detectedObjectCount = this.detectedObjectCount != null
+                                    ? this.detectedObjectCount
+                                    : new AtomicInteger(0);
+
                             // Post-processing strategy: output handler (per-tile) + merger (across all tiles).
-                            CpSamPostProcessing postProcessingConfig = new CpSamPostProcessing(preferredOutputType);
+                            CpSamPostProcessing postProcessingConfig = new CpSamPostProcessing(
+                                    preferredOutputType, 1, 0.5, detectedObjectCount);
                             OutputHandler<Mat, Mat, NDArray[]> outputHandler = postProcessingConfig.createOutputHandler();
                             ObjectProcessor postProcessor = postProcessingConfig.createPostProcessor();
 
@@ -509,6 +528,14 @@ public class CpSam {
                                     .postProcess(postProcessor)
                                     .downsample(effectiveDownsample)
                                     .build();
+
+                            // Clear existing child objects from previous runs so the progress
+                            // counter only shows newly detected objects.
+                            long existingObjects = pathObjects.stream().mapToLong(p -> p.getChildObjects().size()).sum();
+                            pathObjects.forEach(p -> p.removeAllChildObjects());
+                            if (existingObjects > 0) {
+                                logger.info("Cleared {} existing child objects before segmentation", existingObjects);
+                            }
 
                             pixelProcessor.processObjects(taskRunner, imageData, pathObjects);
 
