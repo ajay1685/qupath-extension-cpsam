@@ -77,7 +77,7 @@ The extension supports selecting 1–3 input channels from:
 
 - **Raw image channels**: Select channels by name
 - **Color deconvolution channels**: Hematoxylin, Eosin, DAB, or other stains for brightfield images. Refer to QuPath's documentation for color deconvolution and seperating stains: https://qupath.readthedocs.io/en/stable/docs/tutorials/separating_stains.html#separating-stains 
-- **(Number of input channels)**: Channel 1 is required. Channels 2 and 3 are optional. When only one or two channels are selected, we zero-pads the other channels to force 3 channel input expected by the model.
+- **Number of input channels**: Channel 1 is required. Channels 2 and 3 are optional. When only one or two channels are selected, we zero-pads the other channels to force 3 channel input expected by the model.
 
 ### Post-Processing
 
