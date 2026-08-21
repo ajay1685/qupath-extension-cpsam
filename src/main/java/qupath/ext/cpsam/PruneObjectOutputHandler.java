@@ -7,6 +7,7 @@ import qupath.lib.experimental.pixels.PixelProcessorUtils;
 import qupath.lib.objects.PathObject;
 import qupath.lib.roi.GeometryTools;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -51,7 +52,7 @@ class PruneObjectOutputHandler<S, T, U> implements OutputHandler<S, T, U> {
             return false;
 
         var parentOrProxy = params.getParentOrProxy();
-        parentOrProxy.removeAllChildObjects();
+        parentOrProxy.removeChildObjects(new ArrayList<>(parentOrProxy.getChildObjects()));
 
         // Remove objects within boundaryThreshold pixels of the tile step boundary,
         // except at the image boundary itself.

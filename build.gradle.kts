@@ -9,7 +9,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-cpsam"
     group = "io.github.ajay1685"
-    version = "0.2.2"
+    version = "0.2.3"
     description = "QuPath extension for Cellpose-SAM models to segment cells in 2D images via Torchscript implementation"
     automaticModule = "io.github.qupath.ext.cpsam"
 }

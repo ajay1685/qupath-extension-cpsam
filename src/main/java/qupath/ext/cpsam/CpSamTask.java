@@ -121,7 +121,7 @@ public class CpSamTask extends Task<Void> {
         } catch (Exception e) {
             logger.error("Error running CPSAM", e);
             Dialogs.showErrorNotification("CPSAM", "Error running segmentation: " + e.getMessage());
-            results = new CpSamResults(0, 0, 0, 0, 0, false);
+            throw new RuntimeException(e);
         }
 
         imageData.getHierarchy().fireHierarchyChangedEvent(this);

@@ -532,7 +532,7 @@ public class CpSam {
                             // Clear existing child objects from previous runs so the progress
                             // counter only shows newly detected objects.
                             long existingObjects = pathObjects.stream().mapToLong(p -> p.getChildObjects().size()).sum();
-                            pathObjects.forEach(p -> p.removeAllChildObjects());
+                            pathObjects.forEach(p -> p.removeChildObjects(new ArrayList<>(p.getChildObjects())));
                             if (existingObjects > 0) {
                                 logger.info("Cleared {} existing child objects before segmentation", existingObjects);
                             }

@@ -7,9 +7,9 @@ pluginManagement {
     }
 }
 
-// TODO: Specify which version of QuPath the extension is targeting here
+// Targets QuPath 0.7.0 but uses Measurement API from 0.8.0 if available.
 qupath {
-    version = "0.8.0-SNAPSHOT"
+    version = "0.7.0"
 }
 
 // Apply QuPath Gradle settings plugin to handle configuration

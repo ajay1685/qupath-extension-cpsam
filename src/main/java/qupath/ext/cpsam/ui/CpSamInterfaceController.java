@@ -92,8 +92,27 @@ public class CpSamInterfaceController extends VBox {
     @FXML
     private ComboBox<CpSamChannelItem> channelCombo3;
 
-    private final ExecutorService pool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam", true));
-    private final ExecutorService downloadPool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam-download", true));
+    private ExecutorService pool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam", true));
+    private ExecutorService downloadPool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam-download", true));
+
+    /** Lazily recreate the segmentation executor if it was shut down during close(). Thread-safe for FX thread only. */
+    private ExecutorService getPool() {
+        if (pool.isShutdown() || pool.isTerminated()) {
+            pool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam", true));
+            logger.debug("Recreated segmentation executor");
+        }
+        return pool;
+    }
+
+    /** Lazily recreate the download executor if it was shut down during close(). Thread-safe for FX thread only. */
+    private ExecutorService getDownloadPool() {
+        if (downloadPool.isShutdown() || downloadPool.isTerminated()) {
+            downloadPool = Executors.newSingleThreadExecutor(ThreadTools.createThreadFactory("cpsam-download", true));
+            logger.debug("Recreated download executor");
+        }
+        return downloadPool;
+    }
+
     private final QuPathGUI qupath;
     private final ObjectProperty<Task<?>> pendingTask = new SimpleObjectProperty<>();
 
@@ -454,7 +473,7 @@ public class CpSamInterfaceController extends VBox {
                 modelName + ".zip",
                 null,  // SHA-256 checksum (null = skip verification for now)
                 p -> Platform.runLater(() -> modelDownloadProgress.setProgress(p))
-            ), downloadPool);
+            ), getDownloadPool());
 
         future.whenComplete((result, ex) -> {
             Platform.runLater(() -> {
@@ -570,10 +589,10 @@ public class CpSamInterfaceController extends VBox {
         measureIntensityCheckBox.selectedProperty().bindBidirectional(
                 CpSamPreferences.measureIntensityProperty());
 
-        // Pending task execution
+        // Pending task execution — use getPool() for lazy recreation after close()
         pendingTask.addListener((observable, oldValue, newValue) -> {
             if (newValue != null) {
-                pool.execute(newValue);
+                getPool().execute(newValue);
             }
         });
     }
@@ -940,11 +959,18 @@ public class CpSamInterfaceController extends VBox {
 
     /**
      * Clean up resources when the panel is closed.
-     * Shuts down the download executor and clears the model cache.
+     * Shuts down the segmentation executor and clears the model cache.
+     * The download executor is NOT shut down — in-progress downloads are allowed
+     * to complete, delivering their notification via the JavaFX thread.
+     * It will be lazily recreated on next use via getDownloadPool().
      */
     public void close() {
-        pool.shutdownNow();
-        downloadPool.shutdownNow();
+        try {
+            pool.shutdownNow();
+            logger.debug("CPSAM segmentation executor shut down");
+        } catch (Exception e) {
+            logger.debug("Error shutting down segmentation executor: {}", e.getMessage());
+        }
         CpSam.clearModelCache();
     }
 }

@@ -9,12 +9,15 @@ import qupath.lib.objects.PathObject;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Post-detection measurement utilities for CPSAM — fallback for QuPath &lt; 0.8.0.
@@ -116,10 +119,25 @@ class CpSamMeasurements {
 
     private static final Logger logger = LoggerFactory.getLogger(CpSamMeasurements.class);
 
-    // Version detection: try new batched API first; if unavailable, fall back to old per-object API.
-    // Checked only once per session; result cached to avoid repeated LinkageError handling.
-    private static final AtomicBoolean useNewApi = new AtomicBoolean(true);
-    private static final AtomicBoolean checked = new AtomicBoolean(false);
+    // Local equivalents of ObjectMeasurements.ALL_MEASUREMENTS / ALL_COMPARTMENTS
+    // (only available as static fields in QuPath 0.8.0+, so we create our own for portability)
+    private static final List<ObjectMeasurements.Measurements> ALL_MEASUREMENTS =
+            Arrays.asList(ObjectMeasurements.Measurements.values());
+    private static final List<ObjectMeasurements.Compartments> ALL_COMPARTMENTS =
+            Arrays.asList(ObjectMeasurements.Compartments.values());
+
+    // Version detection: probe for the batched addIntensityMeasurements method (QuPath 0.8.0+).
+    // Cached after first check. null = not yet checked; UNAVAILABLE sentinel = checked but not found.
+    private static volatile Method batchedMeasureMethod = null;
+    @SuppressWarnings("rawtypes")
+    private static final Method UNAVAILABLE;
+    static {
+        try {
+            UNAVAILABLE = String.class.getMethod("toString");
+        } catch (NoSuchMethodException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
 
     private CpSamMeasurements() {}
 
@@ -169,18 +187,28 @@ class CpSamMeasurements {
                                          int nThreads) throws IOException {
         if (objects.isEmpty()) return;
 
-        // On first call, check if the new batched API (QuPath 0.8.0+) is available
-        if (useNewApi.compareAndSet(true, false)) {
-            try {
-                // Probe: access ALL_MEASUREMENTS — throws NoSuchFieldError on QuPath < 0.8.0
-                @SuppressWarnings("unused") Object probe = ObjectMeasurements.ALL_MEASUREMENTS;
-            } catch (LinkageError e) {
-                logger.info("QuPath < 0.8.0 detected — falling back to per-object intensity measurements");
-                checked.set(true);
+        // On first call, probe for the batched addIntensityMeasurements method (QuPath 0.8.0+)
+        if (batchedMeasureMethod == null) {
+            synchronized (CpSamMeasurements.class) {
+                if (batchedMeasureMethod == null) {
+                    try {
+                        batchedMeasureMethod = ObjectMeasurements.class.getMethod(
+                                "addIntensityMeasurements",
+                                qupath.lib.images.servers.ImageServer.class,
+                                Collection.class, double.class,
+                                Collection.class, Collection.class,
+                                Executor.class);
+                        logger.debug("QuPath batched intensity measurement API available");
+                    } catch (NoSuchMethodException e) {
+                        batchedMeasureMethod = UNAVAILABLE; // sentinel: checked but not available
+                        logger.info("QuPath batched intensity measurement API not found — falling back to per-object measurements");
+                    }
+                }
             }
         }
 
-        if (!useNewApi.get() && checked.get()) {
+        // Fall back to per-object API if batched method unavailable
+        if (batchedMeasureMethod == UNAVAILABLE) {
             CpSamMeasurementsOld.addIntensityMeasurements(imageData, objects, downsample);
             return;
         }
@@ -207,17 +235,19 @@ class CpSamMeasurements {
         try {
             var server2 = builder.build();
             try (var pool = Executors.newFixedThreadPool(threads)) {
-                ObjectMeasurements.addIntensityMeasurements(
+                batchedMeasureMethod.invoke(null,
                         server2,
                         objects,
                         downsample,
-                        ObjectMeasurements.ALL_MEASUREMENTS,
-                        ObjectMeasurements.ALL_COMPARTMENTS,
+                        ALL_MEASUREMENTS,
+                        ALL_COMPARTMENTS,
                         pool);
             }
             // server2 is closed here if it's different from server
-        } catch (IOException e) {
-            throw e;
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException ioe) throw ioe;
+            throw new IOException("Failed to measure intensity: " + cause.getMessage(), cause);
         } catch (Exception e) {
             throw new IOException("Failed to measure intensity: " + e.getMessage(), e);
         }

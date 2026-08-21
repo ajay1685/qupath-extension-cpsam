@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.cpsam.ui.CpSamInterfaceController;
 import qupath.ext.cpsam.ui.CpSamPreferences;
+import qupath.fx.dialogs.Dialogs;
 import qupath.fx.prefs.controlsfx.PropertyItemBuilder;
 import qupath.fx.utils.FXUtils;
 import qupath.lib.common.Version;
